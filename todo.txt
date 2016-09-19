@@ -1,0 +1,141 @@
+
++	determined type of arguments(checked arguments), optional arguments which are left for function to check
++	variable type of arguments and variable number of arguments ( just pass: std::vector<Variable> as only argument to function )
+-	infix math, parsing expression { }
++	deferred execution code which is compiled and may take arguments
++	if last argument is string then append rest of arguments as string
++	embed get/set command for manipulating global variables
+
+-	$variable as command
+-	operator = for setting values
+-	operator $$ returns reference to its own Execution code [ ] and same variables space
++	decompiling code
+-	pausing execution
++	deferred compiled commands by using syntax [ ]
+	+	commands and variables are put in vector
+	
++	function signature
+-	tabbing for commands and variables
+-	reference counting
+-------------------------------
+
+; all arguments are determined and checked before calling
+COMMAND(name, (int a, int b, char a, std::string s)) {
+	
+}
+
+
+; a,b,c,d - checked, args - unchecked variable number of arguments
+COMMAND(name, (int a, int b, char c, std::string d, std::vector<Arg>& args)) {
+	
+}
+
+; all arguments are unchecked
+COMMAND(name, (std::vector<Arg>& args)) {
+	
+}
+
+
+----------------------
+
+$variable - first look for local variable, then global
+
+compiling code:
+
+; generating deferred code
+
+[ $variable a b c ]
+
+------
+
+; variable is evaluated right away and replaced with its value and if its deferred code or command scope then its executed and its result is placed instead, 
+; if its string then such function name call is generated, otherwise throw error
+[ $variable a (b c) d [hehe haha]; sum 5 6 ]
+
+; this will generate code
+( (t_data, n_local_variables), ... local variables and closures ... (t_end), /* depends what variable contains */, (t_string, a), (t_command), (t_function, b /*index*/), (t_string, c), (t_end), (t_string d), (t_deferred, /* reference to compiled code */), (t_end), (t_function, sum /* index */), (t_int, 5), (t_int, 6) )
+; result (value) of sum function returned is also return value of this deferred code
+; if b is not found as local function (or variable with deferred code) or global function (or global variable with deferred code) then throw error
+
+; possibilities
+(t_command, index of global command, or empty) /* if empty then here must come something that resolves function to be called in runtime */
+(t_template, index of global command, or empty) /* if empty then here must come something that resolves function to be called in runtime */
+
+; template for generating deferred string
+	t_placeholder, string reference
+
+; operator $
+	[ test = 5; $test; [ $test ] ]
+	; $1 ... $100 (function parameters)
+	
+; operator { }
+
+; variable setting/getting
+	; setting
+	set a 5 ; sets a as global variable
+	set a = 5 ; sets a as global variable
+	a = 6 ; local, if in global context then its global
+	
+	; constants
+		; when some global function parameter is expecting some numeric value, it will be automatically converted from string constant to value of that constant
+		; setting constant
+		const a = 5 
+		COMMAND(int, func, (int number)) {}
+		; this will be replaced with: func 5
+		func a
+	
+	; getting
+	$a <=> (get a)
+	(get 1) <=> $1 ?
+	
+; closures
+	; closures are captured if variable is changed (set)
+	; closures are set near reserved local variables (they have their space reserved already)
+
+; references
+	; all strings are referenced
+	; deferred code is all referenced
+
+
+; if global func has parameter as deferred function then any strings passed to that parameter will be considered as passing function pointer
+	COMMAND(int, func, (deferred f)) {}
+	func a
+	; then a will be considered as function pointer
+
+
+; resolving function at runtime
+	; ((func)) for example calls function returned from function
+	(func) a b c; func2 a b c
+	; so there is way to use ( ) or invent function (call (func))
+	call (func) a b c
+
+; any value that you pass parameters becomes function
+	; evaluating returned code as function in runtime
+	(func) a b c
+	; var can be deferred
+	set var [ ... ]
+	; var can be global function name
+	set var function_name
+	$var a b c
+
+	; generating deferred code and immediatelly calling it
+		[ func $1 $2 $3 ] a b c
+
+; dynamic function call, sending list as parameters
+	; call deferred, with list as parameters
+	call func_name (list a b c d)
+	; call deferred, without parameters
+	call func_name
+
+; rule: no sideffects other than returning value
+ 		; or maybe i invent references here as possibility and send reference by closure
+
+
+; returning result from function
+	; value is returned if executing expression
+	; to return string can use (str string), some str defined function which takes string and just returns it or "string"
+	; while this is not much problem for expression
+	(t_expression)(?,?)...
+
+
+----------------------
