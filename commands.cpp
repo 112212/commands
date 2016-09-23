@@ -5,81 +5,252 @@ using std::cout;
 using std::endl;
 #include <fstream>
 #include <sstream>
+#include <cmath>
+namespace Commands {
+	
+// #define VARIABLE_CHARACTER_SET_SIZE 2*26+10
+#define VARIABLE_CHARACTER_SET_SIZE 256
+struct node {
+	int cmd;
+	std::array<node*, VARIABLE_CHARACTER_SET_SIZE> nodes;
+	node() {
+		cmd = -1;
+		for(node*& n : nodes) {
+			n = nullptr;
+		}
+	}
+	~node() {
+		for(node*& n : nodes) {
+			if(n) delete n;
+			n = 0;
+		}
+	}
+};
+}
 Command* Command::singleton = new Command();
-void arg_convert(Arg& a) {
-	if(a.type == Arg::t_string) {
-		try {
-			a.i = std::stoi(a.s);
-			a.type = Arg::t_int;
-		} catch(...) {
-		}
-	}
-}
 
-Command::Command() : m_root_node(new node()) {
+using namespace Commands;
+
+inline void try_convert(Arg& a, Arg::type_enum t) {
+	if(a.type == t) return;
 	
-}
-
-void Command::loadFromFile(std::string filename) {
-	std::ifstream file(filename);
-	if(!file.good()) return;
-	file.seekg (0, file.end);
-    int length = file.tellg();
-    file.seekg (0, file.beg);
-
-	if(length == 0) return;
-	
-    char * buffer = new char[length+1];
-    file.read(buffer,length);
-    std::string commands(buffer,length);
-	// cout << "loading from file: " << length << " : " << commands << endl;
-    execute(commands);
-    delete[] buffer;
-    file.close();
-}
-void Command::saveVariablesToFile(std::string filename) {
-	
-	std::ofstream file(filename, std::ofstream::app);
-
-	
-    for(auto& variable : m_strings) {
-		auto it = m_variables.find(variable.second);
-		if(it == m_variables.end()) continue;
-		Arg v = m_variables[variable.second];
-		std::string var = std::string("set ") + variable.first + " ";
-		switch(v.type) {
-			case Arg::t_executable: {
-				std::string exec_text = get_executable_text(v);
-
-				Executable& e = m_executables[v.i];
-				std::stringstream s;
-				decompile_code(s, e.code, 0, e.code.size());
-				var += "[" + s.str() + " ]";
-				break;
+	switch(t) {
+		case Arg::t_string:
+			a.s = (std::string)a;
+			break;
+		case Arg::t_int:
+			a.i = (int)a;
+			break;
+		case Arg::t_float:
+			if(a.type == Arg::t_string) {
+				try {
+					a.f = std::stof(a.s);
+				}catch(...) {
+					
+				}
+			} else if(a.type == Arg::t_int) {
+				a.f = a.i;
+			} else if(a.type == Arg::t_double) {
+				a.f = a.d;
 			}
-			case Arg::t_string:
-				var += v.s;
-				break;
-			case Arg::t_char:
-				var += v.c;
-				break;
-			case Arg::t_float:
-				var += v.f;
-				var += "f";
-				break;
-			case Arg::t_double:
-				var += v.d;
-				break;
-		}
-		file.write(var.c_str(), var.size());
-		file.put('\n');
+			break;
+		case Arg::t_double:
+			if(a.type == Arg::t_string) {
+				try {
+					a.d = std::stod(a.s);
+				}catch(...) {
+					
+				}
+			} else if(a.type == Arg::t_int) {
+				a.d = a.i;
+			} else if(a.type == Arg::t_double) {
+				a.d = a.d;
+			}
+			break;
 	}
-    
-	file.close();
 }
+
+// -----------------------------------------------------------
+// --------------------------[ CONFIG ]-----------------------
+// -----------------------------------------------------------
+
+#define EVAL_START '('
+#define EVAL_END ')'
+
+#define TEMPLATE_START '['
+#define TEMPLATE_END ']'
+
+#define FUNCTION_DELIMITER ';'
+#define STRING_OPERATOR '\"'
+
+#define GET_VARIABLE_FUNCTION "get"
+#define SET_VARIABLE_FUNCTION "set"
+#define IF_FUNCTION "if"
+#define GOTO_FUNCTION "#"
+
+#define VARIABLE_MARKER '$'
+#define ESCAPING_CHARACTER '\\'
+
+#define ADD_BASIC_MATH_FUNCTIONS
+#define ADD_ADVANCED_MATH_FUNCTIONS
+#define ADD_TRIGONOMETRIC_FUNCTIONS
+#define ADD_CONVERSION_FUNCTIONS
+
+// ----------------[ CONSTRUCTOR ]-------------------------
+
+Command::Command() : m_root_functions(new node()), m_root_variables(new node()) {
+
+#ifdef ADD_BASIC_MATH_FUNCTIONS
+	add_command("+", [](int a, std::vector<Arg> arg) {
+		int sum=0;
+		for(auto& a : arg) {
+			try_convert(a, Arg::t_int);
+			sum += a; 
+		}
+		return sum;
+	});
+	add_command("+f", [](float a, std::vector<Arg> arg) {
+		float sum=0;
+		for(auto& a : arg) {
+			try_convert(a, Arg::t_float);
+			sum += a.f;
+		}
+		return sum;
+	});
+	add_command("-", [](int a, std::vector<Arg> arg) {
+		int sum=a;
+		for(int i = 1; i < arg.size(); i++) {
+			try_convert(arg[i], Arg::t_int);
+			sum -= arg[i].i; 
+		}
+		return sum;
+	});
+	add_command("-f", [](float a, std::vector<Arg> arg) {
+		float sum=a;
+		for(int i = 1; i < arg.size(); i++) {
+			try_convert(arg[i], Arg::t_float);
+			sum -= arg[i].f; 
+		}
+		return sum;
+	});
+	add_command("*", [](int first, std::vector<Arg> arg) {
+		int prod=first;
+		for(auto& a : arg) {
+			try_convert(a, Arg::t_int);
+			prod *= a; 
+		}
+		return prod;
+	});
+	add_command("*f", [](std::vector<Arg> arg) {
+		float prod=1;
+		for(auto& a : arg) {
+			try_convert(a, Arg::t_float);
+			prod *= a; 
+		}
+		return prod;
+	});
+	add_command("/", [](int a, int b) {
+		if(b == 0) return 999999;
+		return a/b;
+	});
+	add_command("/f", [](float a, float b) -> float{
+		if(b == 0) return 999999;
+		return a/b;
+	});
+	add_command("^", [](std::vector<Arg> arg) {
+		int res = 0;
+		for(auto& a : arg) {
+			res ^= a; 
+		}
+		return res;
+	});
+
+	add_command("<", [](int a, int b) {
+		return a < b;
+	});
+	add_command(">", [](int a, int b) {
+		return a > b;
+	});
+	add_command(">=", [](int a, int b) {
+		return a >= b;
+	});
+	add_command("<=", [](int a, int b) {
+		return a <= b;
+	});
+	add_command("", [](int a, int b) {
+		return a <= b;
+	});
+#endif	
+
+#ifdef ADD_ADVANCED_MATH_FUNCTIONS
+add_command("pow", [](Arg a, Arg b) -> int{
+	try_convert(a, Arg::t_int);
+	try_convert(b, Arg::t_int);
+	return pow(a,b);
+});
+#endif
+	
+#ifdef ADD_TRIGONOMETRIC_FUNCTIONS
+	add_command("sin", [](float a) {
+		return sin(a);
+	});
+	add_command("cos", [](float a) {
+		return cos(a);
+	});
+#endif
+	
+#ifdef ADD_CONVERSION_FUNCTIONS
+	add_command("float", [](Arg a) -> float {
+		try_convert(a, Arg::t_float);
+		return a.f;
+	});
+	add_command("double", [](Arg a) -> double {
+		try_convert(a, Arg::t_double);
+		return a.d;
+	});
+	add_command("string", [](Arg a) -> std::string {
+		return (std::string)a;
+	});
+#endif
+}
+// ---------------------------------------------------------------------------------
+// ------------------------------------[ DEBUG ]------------------------------------
+// ---------------------------------------------------------------------------------
 
 #define debug(x) 
 #define debug2(x) 
+
+char const* type_to_name[50] = { "t_void", "t_int", "t_float", "t_double", "t_string", "t_string_ref", 
+	"t_eval", "t_template", "t_executable", "t_variable", "t_function", "t_get", "t_set", "t_if", "t_param", "t_loop" };
+void Arg::dump() {
+	if(type >= 19 || type < 0) return;
+	cout << "(" << type_to_name[(int)type] << ", ";
+	switch(type) {
+		case t_float:
+			cout << f; break;
+		case t_double:
+			cout << d; break;
+		case t_string:
+			cout << '"' << s << '"'; break;
+		default:
+			cout << i; break;
+	}
+	cout << ")";
+}
+
+void Command::printCompiledCode(std::vector<Arg>& code) {
+	cout << code.size() << " code: ";
+	for(auto& a : code) {
+		a.dump();
+		cout << ", ";
+	}
+	cout << endl;
+}
+
+
+// ------------------------------------------------------------------------
+// --------------------------------[ DECOMPILER ]--------------------------
+// ------------------------------------------------------------------------
 
 std::string Command::get_executable_text(const Arg& arg) {
 	if(arg.type == Arg::t_executable) {
@@ -98,42 +269,10 @@ std::string Command::get_executable_text(const Arg& arg) {
 	return "";
 }
 
-
-
-char const* type_to_name[50] = { "t_void", "t_int", "t_float", "t_double", "t_char", "t_charp", "t_string", "t_string_ref", // basic types
-		   "t_end", "t_eval", "t_template", "t_executable", "t_variable", "t_function", "t_get", "t_set", "t_param", "t_loop", "t_if" };
-void Arg::dump() {
-	if(type >= 19 || type < 0) return;
-	cout << "(" << type_to_name[(int)type] << ", ";
-	switch(type) {
-		case t_float:
-			cout << f; break;
-		case t_double:
-			cout << d; break;
-		case t_char:
-			cout << c; break;
-		case t_string:
-			cout << '"' << s << '"'; break;
-		default:
-			cout << i; break;
-	}
-	cout << ")";
-}
-
-
-void Command::printCompiledCode(std::vector<Arg>& code) {
-	cout << code.size() << " code: ";
-	for(auto& a : code) {
-		a.dump();
-		cout << ", ";
-	}
-	cout << endl;
-}
-
-
 void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs, int len) {
 	bool first = true;
 	len += ofs;
+	bool is_ident = false;
 	debug2(cout << "decompiling" << endl;)
 	for(int i=ofs; i < len; i++) {
 		Arg& a = e[i];
@@ -143,39 +282,61 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 				a.dump();
 				cout << endl;)
 				
-				s << " [";
+				s << " " << TEMPLATE_START;
 				i++;
 				decompile_code(s, e, i, a.i);
 				i+=a.i-1;
-				s << " ]";
+				s << " " << TEMPLATE_END;
 				break;
 			case Arg::t_eval:
 				debug2(cout << "evaluating: ";
 				a.dump();
 				cout << endl;)
 				
-				s << " (";
+				s << " " << EVAL_START;
 				i++;
 				decompile_code(s, e, i, a.i);
 				i+=a.i-1;
-				s << ")";
+				s << EVAL_END;
+				break;
+			case Arg::t_param:
+				if(!first) {
+					s << " ";
+				}
+				if(a.i > 0) {
+					s << VARIABLE_MARKER << a.i;
+				} else if(a.i == 0) {
+					s << "$0";
+				} else if(a.i < 0) {
+					int indx = -(a.i+1);
+					s << VARIABLE_MARKER;
+					if(indx > 0)
+						s << indx;
+					s << "...";
+				} else
+					s << VARIABLE_MARKER << a.i;
+				
 				break;
 			case Arg::t_loop:
-				s << "; $";
+				if(!first) {
+					s << " ";
+				}
+				s << VARIABLE_MARKER;
 				break;
 			case Arg::t_if:
 			case Arg::t_get:
 			case Arg::t_set:
 			case Arg::t_function: {
 				if(!first) {
-					s << ";";
+					s << FUNCTION_DELIMITER;
 				}
 				if(a.type == Arg::t_if) {
-					s << " if";
+					s << " " IF_FUNCTION;
 				} else if(a.type == Arg::t_get) {
-					s << " get";
+					s << " " GET_VARIABLE_FUNCTION;
 				} else if(a.type == Arg::t_set) {
-					s << " set";
+					s << " " SET_VARIABLE_FUNCTION;
+					is_ident = true;
 				} else if(a.type == Arg::t_function) {
 					debug2(cout << "function" << endl;)
 					Arg &b = e[i+1];
@@ -198,7 +359,7 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 				break;
 			}
 			case Arg::t_variable: {
-				s << " $" << m_strings_reverse[a.i];
+				s << " " << VARIABLE_MARKER << m_strings_reverse[a.i];
 				break;
 			}
 			case Arg::t_int:
@@ -208,11 +369,12 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 				s << a.f;
 				s << "f ";
 				break;
-			case Arg::t_char:
-				s << " " << a.c;
-				break;
 			case Arg::t_string:
-				s << " " << a.s;
+				if(is_ident) {
+					s << " " << a.s;
+					is_ident = false;
+				} else
+					s << " " << STRING_OPERATOR << a.s << STRING_OPERATOR;
 				break;
 			case Arg::t_double:
 				s << " " << a.d;
@@ -221,16 +383,47 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 	}
 }
 
-static bool isIdent(char c) {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+// ---------------------------------------------------------------------------------------
+// ------------------------[ CODE COMPLETION AND INTROSPECTION ]--------------------------
+// ---------------------------------------------------------------------------------------
+
+
+char ident_to_index(char c) {
+	if(c == '/' || c == ' ' || c == '$')
+		return -1;
+	return c;
+	/*
+	char l = 'z'-'a';
+	if(c >= 'a' && c <= 'z')
+		c = c - 'a';
+	else if(c >= 'A' && c <= 'Z') 
+		c = c - 'A' + l;
+	else if(c >= '0' && c <= '9')
+		c = c - '0' + 2*l;
+	else
+		return -1;
+	return c;
+	*/
+}
+char index_to_ident(char c) {
+	return c;
+	/*
+	char l = 'z'-'a';
+	if(c <= l)
+		c = c+'a';
+	else if(c <= 2*l)
+		c = c-l + 'A';
+	else if(c <= 2*l+10) 
+		c = c-2*l+'0';
+	return c;
+	*/
 }
 
-void Command::add_to_tree(std::string s) {
-	node* n = m_root_node;
+void Command::add_to_tree(node* n, std::string s) {
 	for(auto& cc : s) {
-		int c = tolower(cc);
-		if(c < 'a' || c > 'z') return;
-		c -= 'a';
+		
+		char c = ident_to_index(cc);
+		if(c == -1) return;
 		
 		if(!n->nodes[c]) {
 			n->nodes[c] = new node();
@@ -241,64 +434,88 @@ void Command::add_to_tree(std::string s) {
 	n->cmd = alloc_string(s);
 }
 
-
-
-
-std::vector<std::string> Command::search(std::string command) {
-	// to implement
+void Command::fill(node* n, std::vector<std::string>& vec, std::string s, int limit) {
+	if(!n || vec.size() >= limit) return;
+	if(n->cmd != -1) {
+		vec.push_back(s);
+	}
+	char ch = 0;
+	for(node* c : n->nodes) {
+		if(c) fill(c, vec, s+index_to_ident(ch), limit);
+		ch++;
+	}
 }
 
-std::string Command::complete(const std::string& cmd, int cursor) {
+std::vector<std::string> Command::search(const std::string& cmd, int cursor, int limit) {
+	node* n = sweep_node(cmd, cursor);
+	std::vector<std::string> vec;
+	fill(n, vec, "", limit);
+	return vec;
+}
+
+node* Command::sweep_node(const std::string& cmd, int cursor) {
 	int i;
+	node* n = nullptr;
 	for(i=cursor; i > 0; i--) {
-		if(cmd[i] == '[' || cmd[i] == '(') break;
+		if(cmd[i] == '[' || cmd[i] == '(' || cmd[i] == ';' || cmd[i] == ' ' || cmd[i] == '/') break;
+		if(cmd[i] == '$') {
+			n = m_root_variables;
+			break;
+		}
 	}
+	if(!n) n = m_root_functions;
 	
 	if(i < 0) i = 0;
-	int start=-1, stop=cmd.size();
+	int start=i+1, stop=cmd.size();
 	for(; i < cmd.size(); i++) {
-		if(isIdent(cmd[i])) {
+		if(ident_to_index(cmd[i]) != -1) {
 			start = i;
 			break;
 		}
 	}
 	for(; i < cmd.size(); i++) {
-		if(!isIdent(cmd[i])) {
+		if(ident_to_index(cmd[i]) == -1) {
 			stop = i;
 			break;
 		}
 	}
-	if(start == -1 || stop == -1) return "";
+	if(start == -1 || stop == -1) return nullptr;
 	std::string ident = cmd.substr(start, stop-start);
 	
-	node* n = m_root_node;
 	
 	for(i=0; i < ident.size(); i++) {
-		int c = tolower(ident[i]);
-		if(c < 'a' || c > 'z') return "";
-		c -= 'a';
+		char c = ident_to_index(ident[i]);
+		if(c == -1) return nullptr;
+		
 		if(n) {
 			n = n->nodes[c];
 		} else
-			return "";
+			return nullptr;
 	}
-	
+	return n;
+}
+
+std::string Command::complete(const std::string& cmd, int cursor) {
+	node* n = sweep_node(cmd, cursor);
 	std::string additional = "";
 	while(n) {
 		if(n->cmd != -1) return additional;
 		node* d = nullptr;
-		char ch = 'a';
+		char ch = 0;
+		char lc = 0;
 		for(node* c : n->nodes) {
 			if(c) {
 				if(!d) {
 					d = c;
-					additional += ch;
+					lc = index_to_ident(ch);
 				} else {
 					return additional;
 				}
 			}
+			
 			ch++;
 		}
+		additional += lc;
 		n = d;
 	}
 	
@@ -313,7 +530,6 @@ const std::string Command::help(const std::string& command) {
 		std::string ret = command + " ";
 		for(auto& s : sign) {
 			switch(s) {
-				case 'c': ret += "char "; break;
 				case 'f': ret += "float "; break;
 				case 'd': ret += "double "; break;
 				case 'i': ret += "int "; break;
@@ -327,18 +543,78 @@ const std::string Command::help(const std::string& command) {
 	}
 }
 
+//	-------------------------------------------------------------------------------------------
+//	-------------------------------[ PARSER (COMPILER) ]---------------------------------------
+//	-------------------------------------------------------------------------------------------
 
 static bool isNumeric(std::string& s) {
-	for(int i=0; i < s.size(); i++) {
-		if(s[i] < '0' || s[i] > '9') return false;
+	if(s.size() == 0) return false;
+	if(!isdigit(s[0]) && s[0] != '.' && s[0] != '-') return false;
+	for(int i=1; i < s.size()-1; i++) {
+		if(!isdigit(s[i]) && s[i] != '.') return false;
 	}
+	
+	if(!isdigit(s.back()) && s.back() != '.' && !(s.back() == 'f' && s.size() != 1) ) return false;
 	return true;
+}
+static bool isOperator(char c) {
+	return c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || c == '&' || c == '<' || c == '>' || c == '=';
+}
+static bool isIdent(char c) {
+	return isalnum(c) || isOperator(c) || c == '_' || c == '.' || c == '?';
+}
+
+Commands::Arg Command::parseVariable(std::vector<Arg>& code, const char*& b) {
+	char const* s = b;
+	if(*s != VARIABLE_MARKER) return 0;
+	Arg a;
+	s++;
+	char const* start = s;
+	if(isIdent(*s)) {
+		for(; *s; s++) {
+			if(!isIdent(*s)) break;
+		}
+		std::string ident(start, (int)(s-start));
+		auto it = m_strings.find(ident);
+		if(it != m_strings.end()) {
+			a = Arg(it->second, Arg::t_variable);
+		} else {
+			int alloc = alloc_variable(ident);
+			a = Arg(alloc, Arg::t_variable);
+		}
+		
+		for(; *s && *s != FUNCTION_DELIMITER && *s != EVAL_END && *s != TEMPLATE_END && *s != '='; s++);
+		
+	} else {
+		for(; *s; s++) {
+			if(!isIdent(*s)) break;
+		}
+		std::string ident(start, (int)(s-start));
+		
+		int num_count = 0;
+		for(int i=0; i < ident.size(); i++) {
+			if(!isdigit(s[i])) break;
+			num_count++;
+		}
+		if(num_count > 0)
+			a = Arg(std::stoi(ident), Arg::t_param);
+		if(std::string(s+num_count, 3) == "...") {
+			if(num_count == 0)
+				a = Arg(-1, Arg::t_param);
+			else
+				a.i = -a.i;
+		}
+	}
+	
+	b = s;
+	return a;
 }
 
 const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::string& error_log) {
 	bool isescaping = false;
 	bool iscommand = true;
 	bool isvariable = false;
+	bool variable_function = false;
 	int last_func = code.size();
 	int argument = 0;
 	
@@ -351,6 +627,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 				error_log = "$ (loop operator) must not take arguments"; \
 				return 0; \
 			} \
+			variable_function = false; \
 			code[last_func].i = argument; \
 		}
 		
@@ -361,13 +638,13 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 		
 		if(state != string) {
 			
-			if(isIdent(c) || c == '\\') {
+			if(isIdent(c) || c == ESCAPING_CHARACTER) {
 				
 				if(state == space) {
 					start = s;
 					state = ident;
 				}
-				if(c == '\\') {
+				if(c == ESCAPING_CHARACTER) {
 					debug(cout << "escaping\n");
 					isescaping = true;
 					s++;
@@ -377,8 +654,9 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 				
 				
 			} else if(!isescaping) {
-				 if(c == '$') {
-					if(!isIdent(s[1])) {
+				 if(c == VARIABLE_MARKER) {
+					// if(!isIdent(s[1])) {
+						/*
 						if(iscommand) {
 							iscommand = false;
 							last_func = code.size();
@@ -388,16 +666,17 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 							error_log = std::string(s, std::min<int>(std::strlen(s), 10)) + " after $ must go identifier, like: $identifier";
 							return 0;
 						}
-					} else {
+						*/
+					// } else {
+						if(iscommand)
+							variable_function = true;
+						state = ident;
+						s++;
+						start = s;
 						isvariable = true;
-					}
-				} else if(c == '(') {
-					/*
-					if(isvariable) {
-						code.emplace_back(Arg::t_eval);
-					}
-					*/
-					
+						continue;
+					// }
+				} else if(c == EVAL_START) {
 					if(iscommand) {
 						iscommand = false;
 						last_func = code.size();
@@ -411,18 +690,13 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 					s = parseCode(code, s+1, error_log);
 					
 					if(!s) return 0;
-					/*
-					if(isvariable) {
-						isvariable = false;
-					}
-					*/
+
 					code[t].i = code.size() - t - 1;
 					state = space;
 					argument++;
 					s++;
 					continue;
-				} else if(c == '[') {
-					// compile template
+				} else if(c == TEMPLATE_START) {
 					
 					if(iscommand) {
 						iscommand = false;
@@ -443,52 +717,97 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 					argument++;
 					s++;
 					continue;
-				} else if(c == '{') {
+				} 
+				/*
+				else if(c == '{') {
 					debug(cout << "-- expression\n");
-					s = parseExpression(code, s+1);
+					// s = parseExpression(code, s+1);
 					if(!s) return 0;
 					argument++;
 				}
+				*/
 			}
 		}
-		if(!isescaping && (c == ' ' || c == '\0' || c == ')' || c == ']' || c == ';' || c == '"' || c == '\n')) {
+		
+		// triggers
+		if(!isescaping && (c == ' ' || c == '\0' || c == EVAL_END || c == TEMPLATE_END || c == FUNCTION_DELIMITER || c == STRING_OPERATOR || c == '\n')) {
 			
-			if(c == '\"') {
+			bool isstring = false;
+			if(c == STRING_OPERATOR) {
 				if(state == string) {
 					state = ident;
-					// argument++;
+					isstring = true;
 				} else if(state == space) {
 					state = string;
 					start = s+1;
 				}
 			}
-				
+			
 			if(state == ident) {
 				std::string ident(start, (int)(s-start));
+				
 				Arg a;
 				argument++;
 				if(isvariable) {
 					debug(cout << "variable: " << ident << endl);
-					isvariable = false;
 					
 					if(isNumeric(ident)) {
-						a = Arg(std::stoi(ident), Arg::t_param);
+						// check if $1...
+						int num_count = 0;
+						for(int i=0; i < ident.size(); i++) {
+							if(!isdigit(ident[i])) break;
+							num_count++;
+						}
+						if(num_count > 0)
+							a = Arg(std::stoi(ident), Arg::t_param);
+						if(ident.substr(num_count) == "...") {
+							if(num_count == 0)
+								a = Arg(-1, Arg::t_param);
+							else
+								a.i = -a.i;
+						}
+						// a.dump();
+						
 					} else {
-					
-						auto it = m_strings.find(ident);
-						if(it != m_strings.end()) {
-							a = Arg(it->second, Arg::t_variable);
+						// cout << "empty " + ident + "\n";
+						if(ident == "") {
+							// cout << "empty \n";
+							a = Arg(last_func, Arg::t_int);
 						} else {
-							int alloc = alloc_variable(ident);
-							m_variables[alloc] = Arg();
-							a = Arg(alloc, Arg::t_variable);
+							auto it = m_strings.find(ident);
+							if(it != m_strings.end()) {
+								a = Arg(it->second, Arg::t_variable);
+							} else {
+								int alloc = alloc_variable(ident);
+								a = Arg(alloc, Arg::t_variable);
+							}
 						}
 					}
 				} else {
-					if(isNumeric(ident)) {
-						a = Arg(std::stoi(ident));
-					} else
+					
+					if(!isstring) {
+						// try conversions
+						// cout << ".......\n";
+						if(isNumeric(ident)) {
+							int counter = 0;
+							for(int i = ident.find('.'); i != std::string::npos; i = ident.find('.',i+1))  counter++;
+							if(counter == 1) {
+								if(ident.back() == 'f') {
+									a = Arg(std::stof(ident), Arg::t_float);
+								} else {
+									a = Arg(std::stod(ident), Arg::t_double);
+								}
+							} else if(counter == 0) {
+								a = Arg(std::stoi(ident), Arg::t_int);
+							} else
+								a = Arg(ident, Arg::t_string);
+						} else {
+							a = Arg(ident, Arg::t_string);
+						}
+					} else {
 						a = Arg(ident, Arg::t_string);
+					}
+						
 					debug(cout << "ident: " << ident << endl);
 				}
 				
@@ -498,13 +817,13 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 					// runtime: (t_function, n_params), (t_string, func_name)
 					
 					last_func = code.size();
-					if(ident == "get") {
+					if(ident == GET_VARIABLE_FUNCTION) {
 						argument = 0;
 						code.emplace_back(0, Arg::t_get);
-					} else if(ident == "set") { // known to have 2 params
+					} else if(ident == SET_VARIABLE_FUNCTION) { // known to have 2 params
 						argument = 0;
 						code.emplace_back(0, Arg::t_set);
-					} else if(ident == "if") {
+					} else if(ident == IF_FUNCTION) {
 						argument = 0;
 						code.emplace_back(0, Arg::t_if);
 					} else {
@@ -521,24 +840,44 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 						// try to resolve get/set
 						if(code[last_func].type == Arg::t_get) {
 							
-						} else if(code[last_func].type == Arg::t_set) {
+						}
+					} else if(argument == 2) {
+						
+						if(code[last_func].type == Arg::t_set) {
 							
 						}
 					}
+					
 					code.push_back(a);
 				}
 				
-				
+				// handle variable = operator
+				if(variable_function) {
+					if(last_func+2 < code.size()) {
+						variable_function = false;
+						// code.back(). dump();
+						if(code[last_func+2].type == Arg::t_string && code[last_func+2].s == "=" && code[last_func].type == Arg::t_function) {
+							code.erase(code.end()-1);
+							argument--;
+							// code.back().dump();
+							code[last_func].type = Arg::t_set;
+							state = space;
+							s++;
+							continue;
+						}
+					}
+				}
+
 				state = space;
-				
+				isvariable = false;
 			}
 			
-			
-			if((c == ';' || c == '\n') && state != string) {
+			// handle triggers ; and \n
+			if((c == FUNCTION_DELIMITER || c == '\n') && state != string) {
 				UPDATE_ARGS
 				iscommand = true;
 				debug(cout << "becomes command\n";)
-				cout << endl;
+				debug(cout << endl;)
 				state = space;
 			}
 			
@@ -547,7 +886,8 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 		if(isescaping) {
 			isescaping = false;
 		} else {
-			if(state != string && (c == ')' || c == ']')) {
+			// handle closing triggers
+			if(state != string && (c == EVAL_END || c == TEMPLATE_END)) {
 				UPDATE_ARGS
 				debug(cout << "-- end\n");
 				return s;
@@ -562,8 +902,65 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 	}
 }
 
-const char* Command::parseExpression(std::vector<Arg>& code, const char* s) {
-	// to implement
+// ---------------------------------------------------------------------
+// ----------------------[ VARIABLES AND ALLOCATIONS ]------------------
+// ---------------------------------------------------------------------
+
+// executes everything from file
+void Command::loadFromFile(std::string filename) {
+	std::ifstream file(filename);
+	if(!file.good()) return;
+	file.seekg (0, file.end);
+    int length = file.tellg();
+    file.seekg (0, file.beg);
+
+	if(length == 0) return;
+	
+    char * buffer = new char[length+1];
+    file.read(buffer,length);
+    std::string commands(buffer,length);
+    execute(commands);
+    delete[] buffer;
+    file.close();
+}
+
+void Command::saveVariablesToFile(std::string filename, bool overwrite) {
+	
+	std::ofstream file(filename, overwrite ? (std::ofstream::out | std::ofstream::trunc) : std::ofstream::app);
+    for(auto& variable : m_strings) {
+		auto it = m_variables.find(variable.second);
+		if(it == m_variables.end()) continue;
+		Arg v = m_variables[variable.second];
+		std::string var = std::string(SET_VARIABLE_FUNCTION " ") + variable.first + " ";
+		switch(v.type) {
+			case Arg::t_executable: {
+				std::string exec_text = get_executable_text(v);
+
+				Executable& e = m_executables[v.i];
+				std::stringstream s;
+				decompile_code(s, e.code, 0, e.code.size());
+				var += TEMPLATE_START + s.str() + " " + TEMPLATE_END;
+				break;
+			}
+			case Arg::t_int:
+				var += std::to_string(v.i);
+				break;
+			case Arg::t_string:
+				var += STRING_OPERATOR + v.s + STRING_OPERATOR;
+				break;
+			case Arg::t_float:
+				var += std::to_string(v.f);
+				var += "f";
+				break;
+			case Arg::t_double:
+				var += std::to_string(v.d);
+				break;
+		}
+		file.write(var.c_str(), var.size());
+		file.put('\n');
+	}
+    
+	file.close();
 }
 
 int Command::alloc_string(const std::string& s) {
@@ -585,28 +982,38 @@ int Command::alloc_variable(const std::string& s) {
 	} else {
 		int i = alloc_string(s);
 		m_variables[i] = Arg();
+		add_to_tree(m_root_variables, s);
 		return i;
 	}
 }
 
+std::string Command::get_string(std::string variable) {
+	Arg a = get(variable);
+	if(a.type == Arg::t_string) {
+		return a.s;
+	} else {
+		return "";
+	}
+}
 
 Arg Command::get(std::string variable) {
 	auto it = m_strings.find(variable);
 	if(it != m_strings.end()) {
 		return m_variables[it->second];
+	} else {
+		alloc_variable(variable);
 	}
 	Arg a;
 	a.type = Arg::t_void;
 	return a;
 }
 
-void Command::set(std::string variable, Arg value) {
+void Command::set(std::string variable, const Arg& value) {
 	auto it = m_strings.find(variable);
 	if(it != m_strings.end()) {
 		m_variables[it->second] = value;
 	} else {
-		m_strings[variable] = m_variables.size();
-		m_variables[m_variables.size()] = value;
+		m_variables[alloc_string(variable)] = value;
 	}
 }
 
@@ -633,7 +1040,18 @@ Arg Command::compile(const std::string& command) {
 	return a;
 }
 
+Arg& Command::get_variable(Executable& e, int index) {
+	auto it = e.vars.find(index);
+	if(it != e.vars.end()) {
+		return it->second;
+	} else {
+		return m_variables[index];
+	}
+}
 
+// -------------------------------------------------------------------------------------
+// ------------------------------------[ EXECUTION CODE ]-------------------------------
+// -------------------------------------------------------------------------------------
 
 Arg Command::execute(const Arg& a, const std::vector<Arg>& params, bool global_context) {
 	if(a.type != Arg::t_executable) {
@@ -686,6 +1104,9 @@ Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs
 			return Arg(idx, Arg::t_executable);
 			break;
 		}
+		case Arg::t_string:
+			return a.s;
+			break;
 		case Arg::t_eval:
 			ofs += a.i;
 			return run_executable(e, params, i+1, a.i);
@@ -695,26 +1116,18 @@ Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs
 			if(param >= 0 && param < params.size()) {
 				// debug( params[param].dump(); )
 				return params[param];
-			} else if(param == -1) {
-				return Arg((int)params.size());
-			} else {
+			} else if(param < 0) {
+				
+				if(param == -1)
+					return Arg((int)params.size());
+
 				debug(cout << "cannot access param " << endl;)
-				return Arg(0);
+				return Arg(Arg::t_void);
 			}
 			break;
 		}
 	}
 	return a;
-}
-
-
-Arg& Command::get_variable(Executable& e, int index) {
-	auto it = e.vars.find(index);
-	if(it != e.vars.end()) {
-		return it->second;
-	} else {
-		return m_variables[index];
-	}
 }
 
 Arg Command::run_executable(Executable& e, const std::vector<Arg>& params, int ofs, int length, bool global_context) {
@@ -727,10 +1140,7 @@ Arg Command::run_executable(Executable& e, const std::vector<Arg>& params, int o
 			i+=e.code[i].i;                                 \
 		} else if(e.code[i].type == Arg::t_executable) {    \
 			i++;                                            \
-		} else {                                            \
-			cout <<"FAIL\n";                                \
-			exit(0);                                        \
-		}                                                   
+		}                                              
 	
 	int len = 999;
 	int c = 0;
@@ -740,7 +1150,7 @@ Arg Command::run_executable(Executable& e, const std::vector<Arg>& params, int o
 go_back:
 	for(int i=ofs; i < to_ofs; i++) {
 		Arg& a = e.code[i];
-		debug(cout << "parsing: ");
+		debug(cout << "executing: ");
 		debug(a.dump());
 		debug(cout << endl);
 		
@@ -857,6 +1267,8 @@ go_back:
 							if(e.code[i].type == Arg::t_eval || e.code[i].type == Arg::t_executable) {
 								ret = process_arg(e, params, i, global_context);
 							}
+						} else {
+							SKIP_EXECUTABLE // skip true exec
 						}
 					} else {
 						i+=a.i-1;
@@ -905,6 +1317,9 @@ go_back:
 									// debug(v.dump(););
 									// debug(cout << endl;)
 									it->second = v;
+								} else {
+									add_to_tree(m_root_variables, m_strings_reverse[s.i]);
+									m_variables[s.i] = v;
 								}
 							}
 						}
@@ -948,22 +1363,35 @@ go_back:
 				break;
 			
 			// ------------------ RESOLVING ARGUMENTS ---------------------
-			case Arg::t_param:
+			case Arg::t_param: {
+				if(a.i < 0) {
+					int arg_start = -(a.i+1);
+					if(arg_start < params.size()) {
+						tmp.resize(tmp.size()+params.size()-arg_start);
+						for(int j=arg_start; j < params.size(); j++) {
+							tmp[c++] = params[j];
+						}
+					}
+				} else {
+					tmp[c++] = process_arg(e, params, i, global_context);
+				}
+				break;
+			}
 			case Arg::t_template:
 			case Arg::t_variable:
 			case Arg::t_eval:
-				// cout << "here\n";
 				if(c < tmp.size())
 					tmp[c++] = process_arg(e, params, i, global_context);
 
-				// cout << "here2\n";
 				break;
 			
 			// ------------------ ADDING ARGUMENTS ------------------------
 			default:
 				debug(cout << "ident\n";)
+				
 				if(c < tmp.size())
 					tmp[c++] = a;
+					
 				debug(a.dump());
 				debug(cout << endl);
 				break;
@@ -978,6 +1406,7 @@ go_back:
 					debug(cout << "executing: " << func.i << endl);
 					try {
 						ret = it->second(tmp);
+						debug(printCompiledCode(tmp);)
 					} catch(...) {}
 				} else {
 					auto it = m_variables.find(func.i);
@@ -995,9 +1424,11 @@ go_back:
 					run_executable(it->second, tmp, 0, it->second.code.size());
 				}
 			} else {
+				debug(
 				cout << "returning ";
 				ret.dump();
 				cout << endl;
+				)
 				ret = func;
 			}
 			len = 999;
@@ -1007,7 +1438,6 @@ go_back:
 	}
 	
 	if(ofs == 0 && ret.type == Arg::t_loop) {
-		// cout << "going back\n";
 		goto go_back;
 	}
 	

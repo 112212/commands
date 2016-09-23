@@ -7,7 +7,7 @@
 
 class Bind {
 	private:
-		std::unordered_map<int, Arg> m_key_executable;
+		std::unordered_map<int, Commands::Arg> m_key_executable;
 		
 	public:
 		Bind();
@@ -15,7 +15,7 @@ class Bind {
 		void SaveKeys(std::string filename);
 		bool SetKey(std::string key, std::string command);
 		void UnsetKey(std::string key);
-		void OnEvent(SDL_Event& e);
+		bool OnEvent(SDL_Event& e);
 };
 
 

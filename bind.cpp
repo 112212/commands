@@ -14,7 +14,6 @@ static std::unordered_map<std::string, int> str_to_key = {
 	{"F8", SDLK_F8},
 	{"F9", SDLK_F9},
 	{"a", SDLK_a},
-	{"a", SDLK_a},
 	{"b", SDLK_b},
 	{"c", SDLK_c},
 	{"d", SDLK_d},
@@ -40,11 +39,14 @@ static std::unordered_map<std::string, int> str_to_key = {
 	{"x", SDLK_x},
 	{"y", SDLK_y},
 	{"z", SDLK_z},
+	{"enter", SDLK_RETURN},
+	{"lshift", SDLK_LSHIFT}
 	
 };
 
 #include <iostream>
 using namespace std;
+using Commands::Arg;
 
 Bind::Bind() {
 	if(key_to_str.empty()) {
@@ -52,7 +54,7 @@ Bind::Bind() {
 			key_to_str[k.second] = k.first;
 		}
 	}
-	Command::AddCommand("bind", [&](std::string key, Arg command) -> int{
+	Command::AddCommand("bind", [&](std::string key, Arg command) {
 		auto it = str_to_key.find(key);
 		if(it != str_to_key.end()) {
 			if(command.type == Arg::t_executable) {
@@ -63,7 +65,7 @@ Bind::Bind() {
 			}
 		}
 	});
-	Command::AddCommand("unbind", [&](std::string key) -> int{
+	Command::AddCommand("unbind", [&](std::string key) {
 		UnsetKey(key);
 	});
 }
@@ -87,16 +89,18 @@ bool Bind::SetKey(std::string key, std::string command) {
 }
 
 
-void Bind::OnEvent(SDL_Event& e) {
+bool Bind::OnEvent(SDL_Event& e) {
 	
 	if(e.type == SDL_KEYDOWN) {
 		auto it = m_key_executable.find((int)e.key.keysym.sym);
 		if(it != m_key_executable.end()) {
 			Arg &code = it->second;
 			std::vector<Arg> args;
-			Command::Execute(code, args, true); 
+			Command::Execute(code, args, true);
+			return true;
 		}
 	}
+	return false;
 }
 
 void Bind::SaveKeys(std::string filename) {

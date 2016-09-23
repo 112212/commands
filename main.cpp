@@ -1,7 +1,7 @@
 #include <iostream>
 using namespace std;
 #include "commands.hpp"
-
+using Commands::Arg;
 COMMAND(int, inc, (int a, int b)) {
 	// cout << "func: " << a << ", " << b << endl;
 	return a + b;
@@ -43,7 +43,7 @@ COMMAND(int, print, (std::vector<Arg> args)) {
 }
 
 COMMAND(int, lolzy, (int a)) {
-	cout << ":D lolzy :D: " << a << endl;
+	cout << "l" << a << endl;
 	return 5;
 }
 
@@ -77,7 +77,6 @@ void test() {
 #include <chrono>
 
 int main() {
-	std::string cool = "nikolaaa";
 	Command::AddCommand("w", [](std::string nick, std::string message) -> int {
 		cout << "nick: " << nick << ", message: " << message << endl;
 	});

@@ -1,21 +1,34 @@
 
 +	determined type of arguments(checked arguments), optional arguments which are left for function to check
 +	variable type of arguments and variable number of arguments ( just pass: std::vector<Variable> as only argument to function )
--	infix math, parsing expression { }
 +	deferred execution code which is compiled and may take arguments
 +	if last argument is string then append rest of arguments as string
 +	embed get/set command for manipulating global variables
 
--	$variable as command
--	operator = for setting values
+-	infix math, parsing expression { }
+-	return on expression result { }
+
++	$..., $1..., $n... pass all params to other function starting from n if given otherwise forward all params
++	$variable as command
++	operator = for setting values ( $a=5; $b = 6; $a = [ $c = 6 ] )
 -	operator $$ returns reference to its own Execution code [ ] and same variables space
 +	decompiling code
 -	pausing execution
-+	deferred compiled commands by using syntax [ ]
++	add basic operators and allow to be used (ex: (+ 3 5 7))
++	compiled commands by using syntax [ ]
 	+	commands and variables are put in vector
-	
+
+
 +	function signature
--	tabbing for commands and variables
++	tabbing for commands and variables
+-	smart tabbing for local variables
+-	multiple overloads
+
++	make parser configurable
++	remove char completely
+-	function must not be called if parameter conversion failed
+-	if last param is std::string then everything past that param is parsed and treated as string (using function signature)
+-	dynamic function signature [#sfi; print $1 $2 $3] ; $1 - string, $2 float, $3 - int
 -	reference counting
 -------------------------------
 
@@ -137,5 +150,11 @@ compiling code:
 	; while this is not much problem for expression
 	(t_expression)(?,?)...
 
+----------------------
+; new parser (compiler)
+; all function are operators
+-	defining precedence
+
+a b c * d + e  <=>  a b (* c (+ d e))
 
 ----------------------
