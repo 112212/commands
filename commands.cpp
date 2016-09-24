@@ -27,7 +27,7 @@ struct node {
 	}
 };
 }
-Command* Command::singleton = new Command();
+Command Command::singleton __attribute__((init_priority(200))) ();
 
 using namespace Commands;
 
@@ -96,16 +96,20 @@ inline void try_convert(Arg& a, Arg::type_enum t) {
 #define ADD_TRIGONOMETRIC_FUNCTIONS
 #define ADD_CONVERSION_FUNCTIONS
 
+// $variable = 5
+// if disabled: variable = 5 won't work
+// #define MUST_BE_VARIABLE_FOR_EQUAL_SET
+
 // ----------------[ CONSTRUCTOR ]-------------------------
 
 Command::Command() : m_root_functions(new node()), m_root_variables(new node()) {
 
 #ifdef ADD_BASIC_MATH_FUNCTIONS
 	add_command("+", [](int a, std::vector<Arg> arg) {
-		int sum=0;
-		for(auto& a : arg) {
-			try_convert(a, Arg::t_int);
-			sum += a; 
+		int sum=a;
+		for(auto& b : arg) {
+			try_convert(b, Arg::t_int);
+			sum += b; 
 		}
 		return sum;
 	});
@@ -217,13 +221,18 @@ add_command("pow", [](Arg a, Arg b) -> int{
 // ------------------------------------[ DEBUG ]------------------------------------
 // ---------------------------------------------------------------------------------
 
-#define debug(x) 
-#define debug2(x) 
+#define debug(x)
+#define debug2(x)
 
+/*
+{ t_void, t_int, t_float, t_double, t_string, t_string_ref, // basic types
+		   t_end, t_eval, t_template, t_executable, t_variable, 
+		   t_function, t_get, t_set, t_if, t_param, t_loop  }
+ */
 char const* type_to_name[50] = { "t_void", "t_int", "t_float", "t_double", "t_string", "t_string_ref", 
-	"t_eval", "t_template", "t_executable", "t_variable", "t_function", "t_get", "t_set", "t_if", "t_param", "t_loop" };
+	"t_eval", "t_template", "t_executable", "t_variable", "t_function", "t_get", "t_set", "t_if", "t_param", "t_loop", "t_goto" };
 void Arg::dump() {
-	if(type >= 19 || type < 0) return;
+	// if(type >= 19 || type < 0) return;
 	cout << "(" << type_to_name[(int)type] << ", ";
 	switch(type) {
 		case t_float:
@@ -326,6 +335,7 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 			case Arg::t_if:
 			case Arg::t_get:
 			case Arg::t_set:
+			case Arg::t_goto:
 			case Arg::t_function: {
 				if(!first) {
 					s << FUNCTION_DELIMITER;
@@ -334,6 +344,8 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 					s << " " IF_FUNCTION;
 				} else if(a.type == Arg::t_get) {
 					s << " " GET_VARIABLE_FUNCTION;
+				} else if(a.type == Arg::t_goto) {
+					s << " " GOTO_FUNCTION;
 				} else if(a.type == Arg::t_set) {
 					s << " " SET_VARIABLE_FUNCTION;
 					is_ident = true;
@@ -363,7 +375,11 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 				break;
 			}
 			case Arg::t_int:
-				s << " " << a.i;
+				if(is_ident) {
+					s << " " << VARIABLE_MARKER << m_strings_reverse[a.i];
+					is_ident = false;
+				} else
+					s << " " << a.i;
 				break;
 			case Arg::t_float:
 				s << a.f;
@@ -558,7 +574,7 @@ static bool isNumeric(std::string& s) {
 	return true;
 }
 static bool isOperator(char c) {
-	return c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || c == '&' || c == '<' || c == '>' || c == '=';
+	return c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || c == '&' || c == '<' || c == '>' || c == '#';
 }
 static bool isIdent(char c) {
 	return isalnum(c) || isOperator(c) || c == '_' || c == '.' || c == '?';
@@ -617,7 +633,6 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 	bool variable_function = false;
 	int last_func = code.size();
 	int argument = 0;
-	
 	enum { space, ident, string } state = space;
 	
 	#define UPDATE_ARGS \
@@ -638,7 +653,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 		
 		if(state != string) {
 			
-			if(isIdent(c) || c == ESCAPING_CHARACTER) {
+			if((iscommand && c != '$' && c != ' ' && c != TEMPLATE_START && c != TEMPLATE_END && c != EVAL_START && c != EVAL_END) || isIdent(c) || c == ESCAPING_CHARACTER) {
 				
 				if(state == space) {
 					start = s;
@@ -655,27 +670,17 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 				
 			} else if(!isescaping) {
 				 if(c == VARIABLE_MARKER) {
-					// if(!isIdent(s[1])) {
-						/*
-						if(iscommand) {
-							iscommand = false;
-							last_func = code.size();
-							argument = 0;
-							code.emplace_back(Arg::t_loop);
-						} else {
-							error_log = std::string(s, std::min<int>(std::strlen(s), 10)) + " after $ must go identifier, like: $identifier";
-							return 0;
-						}
-						*/
-					// } else {
-						if(iscommand)
-							variable_function = true;
-						state = ident;
-						s++;
-						start = s;
-						isvariable = true;
-						continue;
-					// }
+					if(iscommand)
+						variable_function = true;
+					state = ident;
+					if(isvariable && start == s) {
+						// reference to current executable
+						code.emplace_back(Arg::t_current_executable_reference);
+					}
+					s++;
+					start = s;
+					isvariable = true;
+					continue;
 				} else if(c == EVAL_START) {
 					if(iscommand) {
 						iscommand = false;
@@ -730,7 +735,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 		}
 		
 		// triggers
-		if(!isescaping && (c == ' ' || c == '\0' || c == EVAL_END || c == TEMPLATE_END || c == FUNCTION_DELIMITER || c == STRING_OPERATOR || c == '\n')) {
+		if(!isescaping && (c == '=' || c == ' ' || c == '\0' || c == EVAL_END || c == TEMPLATE_END || c == FUNCTION_DELIMITER || c == STRING_OPERATOR || c == '\n')) {
 			
 			bool isstring = false;
 			if(c == STRING_OPERATOR) {
@@ -745,7 +750,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 			
 			if(state == ident) {
 				std::string ident(start, (int)(s-start));
-				
+				debug(cout << "-- ident: " << ident << endl;);
 				Arg a;
 				argument++;
 				if(isvariable) {
@@ -772,7 +777,10 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 						// cout << "empty " + ident + "\n";
 						if(ident == "") {
 							// cout << "empty \n";
-							a = Arg(last_func, Arg::t_int);
+							int t=code.size();
+							for(; t >= 0 && code[t] != Arg::t_template; t--);
+							t++;
+							a = Arg(last_func-t, Arg::t_int);
 						} else {
 							auto it = m_strings.find(ident);
 							if(it != m_strings.end()) {
@@ -817,23 +825,33 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 					// runtime: (t_function, n_params), (t_string, func_name)
 					
 					last_func = code.size();
+					argument = 0;
 					if(ident == GET_VARIABLE_FUNCTION) {
-						argument = 0;
 						code.emplace_back(0, Arg::t_get);
 					} else if(ident == SET_VARIABLE_FUNCTION) { // known to have 2 params
-						argument = 0;
 						code.emplace_back(0, Arg::t_set);
 					} else if(ident == IF_FUNCTION) {
-						argument = 0;
 						code.emplace_back(0, Arg::t_if);
+					} else if(ident == GOTO_FUNCTION) {
+						code.emplace_back(0, Arg::t_goto);
 					} else {
 						argument = 1;
 						code.emplace_back(argument, Arg::t_function);
+						
 						auto it = m_strings.find(ident);
-						if(it != m_strings.end()) {
+						if(a.type != Arg::t_variable && it != m_strings.end()) {
 							code.emplace_back(it->second, Arg::t_int);
-						} else
+						} else {
+							if(a.type == Arg::t_int) {
+								error_log = "cannot call integer function";
+								return 0;
+							}
+							if(a.type == Arg::t_variable) {
+								code[last_func].type = Arg::t_get;
+								a.type = Arg::t_int;
+							}
 							code.push_back(a);
+						}
 					}
 				} else {
 					if(argument == 1) {
@@ -851,26 +869,41 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 					code.push_back(a);
 				}
 				
-				// handle variable = operator
-				if(variable_function) {
-					if(last_func+2 < code.size()) {
-						variable_function = false;
-						// code.back(). dump();
-						if(code[last_func+2].type == Arg::t_string && code[last_func+2].s == "=" && code[last_func].type == Arg::t_function) {
-							code.erase(code.end()-1);
-							argument--;
-							// code.back().dump();
-							code[last_func].type = Arg::t_set;
-							state = space;
-							s++;
-							continue;
-						}
-					}
-				}
+				
 
 				state = space;
 				isvariable = false;
 			}
+			
+			// handle variable = operator
+			#ifdef MUST_BE_VARIABLE_FOR_EQUAL_SET
+			if(variable_function) {
+			#endif
+				// if(c == '=' || (last_func+2 < code.size()) ) {
+				if(c == '=' && argument == 1) {
+					// code.back(). dump();
+					// cout << "------ VARIABLE SET ---- " << endl;
+					// if((c == '=' || (last_func+2 < code.size() && code[last_func+2].type == Arg::t_string && code[last_func+2].s == "=")) && code[last_func].type == Arg::t_function) {
+					if(code[last_func].type == Arg::t_function || code[last_func].type == Arg::t_get) {
+						variable_function = false;
+						// if(c != '=') {
+							// code.erase(code.end()-1);
+							// argument--;
+						// }
+						// code.back().dump();
+						// cout << endl;
+						code[last_func].type = Arg::t_set;
+						
+						state = space;
+						isvariable = false;
+						
+						s++;
+						continue;
+					}
+				}
+			#ifdef MUST_BE_VARIABLE_FOR_EQUAL_SET
+			}
+			#endif
 			
 			// handle triggers ; and \n
 			if((c == FUNCTION_DELIMITER || c == '\n') && state != string) {
@@ -1034,7 +1067,9 @@ Arg Command::compile(const std::string& command) {
 	
 	Executable exec;
 	exec.code = code;
-	m_executables[m_executables.size()] = (exec);
+	int idx = m_executables.size();
+	exec.id = idx;
+	m_executables[idx] = exec;
 	a.type = Arg::t_executable;
 	a.i = m_executables.size()-1;
 	return a;
@@ -1083,12 +1118,18 @@ Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs
 			}
 			break;
 		}
+		case Arg::t_current_executable_reference:
+			return Arg(e.id, Arg::t_executable);
+			break;
 		case Arg::t_template: {
 			auto start_code = e.code.begin()+i+1;
 			Executable e1;
 			e1.vars = e.vars;
 			e1.code = std::vector<Arg>(start_code, start_code+a.i);
 			int idx = m_executables.size();
+			e1.id = idx;
+			e1.paused = false;
+			e1.instruction_pointer = 0;
 			m_executables[idx] = e1;
 			ofs += a.i;
 			
@@ -1097,7 +1138,7 @@ Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs
 				cout << "from: ";
 				start_code->dump();
 				cout << " to: ";
-				(start_code+a.i)->dump();
+				(start_code+a.i-1)->dump();
 				cout << endl;
 			)
 			
@@ -1128,6 +1169,19 @@ Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs
 		}
 	}
 	return a;
+}
+
+bool isfunction(Arg& a) {
+	switch(a.type) {
+		case Arg::t_function:
+		case Arg::t_set:
+		case Arg::t_get:
+		case Arg::t_if:
+		case Arg::t_goto:
+			return true;
+		default:
+			return false;
+	}
 }
 
 Arg Command::run_executable(Executable& e, const std::vector<Arg>& params, int ofs, int length, bool global_context) {
@@ -1161,13 +1215,14 @@ go_back:
 				len = a.i-1;
 				
 				debug(cout << "executing function " << len << "\n");
-				
+				tmp.clear();
 				i++;
 				Arg& b = e.code[i];
 				switch(b.type) {
 					case Arg::t_eval:
 						i++;
-						func = run_executable(e, params, i, b.i);
+						// func = run_executable(e, params, i, b.i);
+						return run_executable(e, params, i, b.i);
 						break;
 					case Arg::t_string: {
 						
@@ -1230,11 +1285,12 @@ go_back:
 						func = process_arg(e, params, i, global_context);
 						break;
 				}
-				tmp.resize(len);
+				tmp.reserve(len);
 				c = 0;
 				break;
 			}
 			// ---------------------- SPECIAL FUNCTIONS --------------------
+			/*
 			case Arg::t_loop:
 				if(ofs == 0) {
 					goto go_back;
@@ -1243,6 +1299,7 @@ go_back:
 				}
 				continue;
 				break;
+			*/
 			case Arg::t_if:
 				if(a.i >= 2 && a.i <= 3) {
 					i++;
@@ -1285,7 +1342,7 @@ go_back:
 					Arg s = process_arg(e,params,i,global_context);//e.code[i+1];
 					i++;
 					Arg v = process_arg(e,params,i,global_context);
-					
+					ret = v;
 					if(s.type == Arg::t_string) {
 						s.type = Arg::t_int;
 						auto it = m_strings.find(s.s);
@@ -1361,36 +1418,47 @@ go_back:
 					i++;
 				}
 				break;
-			
+			case Arg::t_goto:
+				i++;
+				ret=process_arg(e, params, i, global_context);
+				for(i=ret.i; i < e.code.size() && !isfunction(e.code[i]); i++);
+				i--;
+				cout << "continuing at: " << i << endl;
+				continue;
+				break;
 			// ------------------ RESOLVING ARGUMENTS ---------------------
+			case Arg::t_current_executable_reference:
+				return Arg(e.id, Arg::t_executable);
+			break;
 			case Arg::t_param: {
 				if(a.i < 0) {
 					int arg_start = -(a.i+1);
 					if(arg_start < params.size()) {
-						tmp.resize(tmp.size()+params.size()-arg_start);
+						// tmp.resize(tmp.size()+params.size()-arg_start);
 						for(int j=arg_start; j < params.size(); j++) {
-							tmp[c++] = params[j];
+							tmp.push_back(params[j]);
+							c++;
 						}
 					}
 				} else {
-					tmp[c++] = process_arg(e, params, i, global_context);
+					tmp.push_back( process_arg(e, params, i, global_context) );
+					c++;
 				}
 				break;
 			}
 			case Arg::t_template:
 			case Arg::t_variable:
 			case Arg::t_eval:
-				if(c < tmp.size())
-					tmp[c++] = process_arg(e, params, i, global_context);
-
+				tmp.push_back( process_arg(e, params, i, global_context) );
+				c++;
 				break;
 			
 			// ------------------ ADDING ARGUMENTS ------------------------
 			default:
 				debug(cout << "ident\n";)
 				
-				if(c < tmp.size())
-					tmp[c++] = a;
+				tmp.push_back(a);
+				c++;
 					
 				debug(a.dump());
 				debug(cout << endl);
@@ -1403,7 +1471,7 @@ go_back:
 				auto it = m_commands.find(func.i);
 				
 				if(it != m_commands.end()) {
-					debug(cout << "executing: " << func.i << endl);
+					debug(cout << "calling function: " << m_strings_reverse[func.i] << endl);
 					try {
 						ret = it->second(tmp);
 						debug(printCompiledCode(tmp);)
@@ -1441,7 +1509,8 @@ go_back:
 		goto go_back;
 	}
 	
-	debug(cout << "ending func\n");
+	debug(cout << "ending func (result: ";
+	ret.dump();cout << "\n");
 	return ret;
 }
 

@@ -52,8 +52,8 @@ class CommandException {
 
 struct Arg {
 	enum type_enum { t_void, t_int, t_float, t_double, t_string, t_string_ref, // basic types
-		   t_end, t_eval, t_template, t_executable, t_variable, 
-		   t_function, t_get, t_set, t_if, t_param, t_loop  }
+		   t_eval, t_template, t_executable, t_variable, 
+		   t_function, t_get, t_set, t_if, t_param, t_loop, t_goto, t_current_executable_reference  }
 		type;
 	
 	union {
@@ -179,6 +179,9 @@ class Command {
 		std::unordered_map<int, Arg> m_variables;
 		
 		struct Executable {
+			int id;
+			bool paused;
+			int instruction_pointer;
 			std::unordered_map<int, Arg> vars;
 			std::vector<Arg> code;
 		};
@@ -354,7 +357,7 @@ class Command {
 		
 		node* m_root_functions;
 		node* m_root_variables;
-		static Command* singleton;
+		static Command singleton;
 		
 	public:
 		Command();
@@ -392,59 +395,59 @@ class Command {
 		
 		// ----------------------------------------------
 		// singleton functions
-		static Command& GetSingleton() { return *singleton; }
-		static void SetSingleton(Command* r) { singleton = r; }
+		static Command& GetSingleton() { return singleton; }
+		static void SetSingleton(Command* r) { singleton = *r; }
 		
 		//
 		static void SaveVarariablesToFile(std::string filename, bool overwrite = false) {
-			singleton->saveVariablesToFile(filename, overwrite);
+			singleton.saveVariablesToFile(filename, overwrite);
 		}
 		static void LoadFromFile(std::string filename) {
-			singleton->loadFromFile(filename);
+			singleton.loadFromFile(filename);
 		}
 		//
 		
 		// --- getting/setting variables
 		static Arg Get(const std::string& variable) {
-			return singleton->get(variable);
+			return singleton.get(variable);
 		}
 		static std::string GetString(const std::string& variable) {
-			return singleton->get_string(variable);
+			return singleton.get_string(variable);
 		}
 		
 		template<typename T>
 		static void Set(const std::string& variable, T value) {
 			Arg v = Arg(value);
-			singleton->set(variable, v);
+			singleton.set(variable, v);
 		}
 		//
 		
 		
 		template<typename F>
 		static bool AddCommand(const std::string& name, F func) {
-			singleton->add_command(name, func);
+			singleton.add_command(name, func);
 		}
 		
 		
 		static Arg Execute(const std::string& command) {
-			return singleton->execute(command);
+			return singleton.execute(command);
 		}
 		static Arg Execute(const Arg& code, const std::vector<Arg>& args, bool global_context = false) {
-			return singleton->execute(code, args, global_context);
+			return singleton.execute(code, args, global_context);
 		}
 		static Arg Compile(const std::string& command) {
-			return singleton->compile(command);
+			return singleton.compile(command);
 		}
 		
 		
 		static std::vector<std::string> Search(std::string command, int cursor, int limit = 10) {
-			return singleton->search(command, cursor, limit);
+			return singleton.search(command, cursor, limit);
 		}
 		static const std::string Help(const std::string& command) {
-			return singleton->help(command);
+			return singleton.help(command);
 		}
 		static std::string Complete(const std::string& half_command, int cursor) {
-			return singleton->complete(half_command, cursor);
+			return singleton.complete(half_command, cursor);
 		}
 		// -----------------------------------------------
 };

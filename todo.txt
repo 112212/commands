@@ -7,11 +7,12 @@
 
 -	infix math, parsing expression { }
 -	return on expression result { }
++	return on eval ( ) as command and return its result
 
 +	$..., $1..., $n... pass all params to other function starting from n if given otherwise forward all params
 +	$variable as command
 +	operator = for setting values ( $a=5; $b = 6; $a = [ $c = 6 ] )
--	operator $$ returns reference to its own Execution code [ ] and same variables space
++	operator $$ returns reference to its own Execution code [ ] and same variables space
 +	decompiling code
 -	pausing execution
 +	add basic operators and allow to be used (ex: (+ 3 5 7))
@@ -23,6 +24,7 @@
 +	tabbing for commands and variables
 -	smart tabbing for local variables
 -	multiple overloads
+-	setting global variable from function not in global context
 
 +	make parser configurable
 +	remove char completely
