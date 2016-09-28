@@ -121,19 +121,21 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 		}
 		return sum;
 	});
-	add_command("-", [](int a, std::vector<Arg> arg) {
-		int sum=a;
-		for(int i = 1; i < arg.size(); i++) {
-			try_convert(arg[i], Arg::t_int);
-			sum -= arg[i].i; 
+	add_command("-", [](std::vector<Arg> arg) {
+		int sum=arg[0];
+		for(int i=1; i < arg.size(); i++) {
+			Arg& a = arg[i];
+			try_convert(a, Arg::t_int);
+			sum -= a.i;
 		}
 		return sum;
 	});
-	add_command("-f", [](float a, std::vector<Arg> arg) {
-		float sum=a;
-		for(int i = 1; i < arg.size(); i++) {
-			try_convert(arg[i], Arg::t_float);
-			sum -= arg[i].f; 
+	add_command("-f", [](std::vector<Arg> arg) {
+		float sum=arg[0];
+		for(int i=1; i < arg.size(); i++) {
+			Arg& a = arg[i];
+			try_convert(a, Arg::t_float);
+			sum -= a.f;
 		}
 		return sum;
 	});
@@ -215,6 +217,9 @@ add_command("pow", [](Arg a, Arg b) -> int{
 	add_command("string", [](Arg a) -> std::string {
 		return (std::string)a;
 	});
+	add_command("int", [](Arg a) -> int {
+		return a;
+	});
 #endif
 }
 // ---------------------------------------------------------------------------------
@@ -231,7 +236,7 @@ add_command("pow", [](Arg a, Arg b) -> int{
  */
 char const* type_to_name[50] = { "t_void", "t_int", "t_float", "t_double", "t_string", "t_string_ref", 
 	"t_eval", "t_template", "t_executable", "t_variable", "t_function", "t_get", "t_set", "t_if", "t_param", "t_loop", "t_goto" };
-void Arg::dump() {
+void Arg::dump() const {
 	// if(type >= 19 || type < 0) return;
 	cout << "(" << type_to_name[(int)type] << ", ";
 	switch(type) {
@@ -247,9 +252,9 @@ void Arg::dump() {
 	cout << ")";
 }
 
-void Command::printCompiledCode(std::vector<Arg>& code) {
+void Command::printCompiledCode(const std::vector<Arg>& code) {
 	cout << code.size() << " code: ";
-	for(auto& a : code) {
+	for(const auto& a : code) {
 		a.dump();
 		cout << ", ";
 	}
@@ -566,11 +571,13 @@ const std::string Command::help(const std::string& command) {
 static bool isNumeric(std::string& s) {
 	if(s.size() == 0) return false;
 	if(!isdigit(s[0]) && s[0] != '.' && s[0] != '-') return false;
+	int num_digits = 0;
 	for(int i=1; i < s.size()-1; i++) {
 		if(!isdigit(s[i]) && s[i] != '.') return false;
+		num_digits = 0;
 	}
 	
-	if(!isdigit(s.back()) && s.back() != '.' && !(s.back() == 'f' && s.size() != 1) ) return false;
+	if(!(s.back() == 'f' && num_digits != 0) && !isdigit(s.back())) return false;
 	return true;
 }
 static bool isOperator(char c) {
@@ -1275,6 +1282,14 @@ go_back:
 						break;
 					}
 					case Arg::t_int:
+						/*
+						cout << "CODE: " << endl;
+						printCompiledCode(e.code);
+						cout << "PARAMS: " << endl;
+						printCompiledCode(params);
+						b.dump();
+						cout << endl;
+						*/
 						func = b;
 						func.type = Arg::t_function;
 						break;

@@ -76,6 +76,7 @@ void Bind::UnsetKey(std::string key) {
 		m_key_executable.erase(it->second);
 	}
 }
+
 bool Bind::SetKey(std::string key, std::string command) {
 	auto it = str_to_key.find(key);
 	if(it != str_to_key.end()) {
@@ -88,8 +89,17 @@ bool Bind::SetKey(std::string key, std::string command) {
 	return false;
 }
 
+bool Bind::SetKey(std::string key, int value) {
+	auto it = str_to_key.find(key);
+	if(it != str_to_key.end()) {
+		m_key_executable[it->second] = Arg(value);
+		return true;
+	}
+	return false;
+}
 
-bool Bind::OnEvent(SDL_Event& e) {
+
+Commands::Arg Bind::OnEvent(SDL_Event& e) {
 	
 	if(e.type == SDL_KEYDOWN) {
 		auto it = m_key_executable.find((int)e.key.keysym.sym);
@@ -97,10 +107,10 @@ bool Bind::OnEvent(SDL_Event& e) {
 			Arg &code = it->second;
 			std::vector<Arg> args;
 			Command::Execute(code, args, true);
-			return true;
+			return code;
 		}
 	}
-	return false;
+	return Commands::Arg(0);
 }
 
 void Bind::SaveKeys(std::string filename) {

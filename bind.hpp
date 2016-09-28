@@ -13,9 +13,12 @@ class Bind {
 		Bind();
 		~Bind();
 		void SaveKeys(std::string filename);
+		
 		bool SetKey(std::string key, std::string command);
+		bool SetKey(std::string key, int value);
+		
 		void UnsetKey(std::string key);
-		bool OnEvent(SDL_Event& e);
+		Commands::Arg OnEvent(SDL_Event& e);
 };
 
 
