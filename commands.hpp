@@ -94,57 +94,17 @@ struct Arg {
 		this->type = type;
 		this->s = s;
 	}
-	Arg& operator=(const Arg& a) {
-		// if(this == 0) return *this;
-		switch(a.type) {
-			case t_float:
-				f = a.f;
-				break;
-			case t_double:
-				d = a.d;
-				break;
-			case t_string:
-				new (&s) std::string(a.s);
-				break;
-			default:
-				i = a.i;
-		}
-		type = a.type;
-		
-		return *this;
-	}
+	Arg& operator=(const Arg& a);
 	Arg(const Arg& a) : s() {
 		*this = a;
 	}
 
 	void dump() const;
 	
-	operator int() {
-		if(type == t_int)
-			return i;
-		else if(type == t_string) {
-			try {
-				return std::stoi(s);
-			} catch(...) {
-				return 0;
-			}
-		} else if(type == t_float) {
-			return (int)f;
-		} else if(type == t_double) {
-			return (int)d;
-		}
-	}
-	operator std::string() {
-		if(type == t_string) {
-			return s;
-		} else if(type == t_int) {
-			return std::to_string(i);
-		} else if(type == t_float) {
-			return std::to_string(f);
-		} else if(type == t_double) {
-			return std::to_string(d);
-		} else return "";
-	}
+	operator int();
+	// operator float();
+	// operator double();
+	operator std::string();
 	~Arg(){}
 };
 
