@@ -15,8 +15,10 @@ void LoadVariables(TCLAP::CmdLine& cmd) {
 			TCLAP::ValueArg<std::string>* v = (TCLAP::ValueArg<std::string>*)a;
 			if(v) {
 				std::string name = a->getName();
-				std::string value = v->getValue();
-				Command::Set(name, value);
+				if(a->is_string) {
+					std::string value = v->getValue();
+					Command::Set(name, value);
+				}
 			}
 		}catch(...){}
 	}
