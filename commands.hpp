@@ -98,6 +98,11 @@ struct Arg {
 	Arg(const Arg& a) : s() {
 		*this = a;
 	}
+	
+	int to_int();
+	float to_float();
+	double to_double();
+	std::string to_string();
 
 	void dump() const;
 	
@@ -147,13 +152,7 @@ class Command {
 		struct adapter_function_generator {
 		
 			static void handle_element(int& i, std::vector<Arg>& args) {
-				if(args[n].type == Arg::t_int) {
-					i = args[n].i;
-				} else if(args[n].type == Arg::t_string) {
-					i = std::stoi(args[n].s);
-				}
-				else
-					throw CommandException("cannot convert to integer");
+				i = args[n].to_int();
 			}
 			static void handle_element(float& f, std::vector<Arg>& args) {
 				if(args[n].type == Arg::t_float) {
@@ -163,20 +162,20 @@ class Command {
 				}
 			}
 			static void handle_element(double& d, std::vector<Arg>& args) {
-				d = args[n].d;
+				d = args[n].to_double();
 			}
 			static void handle_element(Arg& a, std::vector<Arg>& args) {
 				a = args[n];
 			}
 			static void handle_element(std::string& s, std::vector<Arg>& args) {
 				s = (std::string)args[n];
-				if(n+1 == N && args.size() != N) {
-					for(int i=n+1; i < args.size(); i++) {
-						Arg& a = args[i];
-						if(a.type == Arg::t_executable || a.type == Arg::t_void) break;
-						s += " " + (std::string)a;
-					}
-				}
+				// if(n+1 == N && args.size() != N) {
+					// for(int i=n+1; i < args.size(); i++) {
+						// Arg& a = args[i];
+						// if(a.type == Arg::t_executable || a.type == Arg::t_void) break;
+						// s += " " + (std::string)a;
+					// }
+				// }
 			}
 			static void handle_element(std::vector<Arg>& e, std::vector<Arg>& args) {
 				e.resize(args.size()-n);

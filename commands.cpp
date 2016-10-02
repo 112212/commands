@@ -71,6 +71,43 @@ inline void try_convert(Arg& a, Arg::type_enum t) {
 	}
 }
 
+int Arg::to_int() {
+	return *this;
+}
+
+float Arg::to_float() {
+	if(type == t_int)
+		return i;
+	else if(type == t_string) {
+		try {
+			return std::stof(s);
+		} catch(...) {
+			return 0;
+		}
+	} else if(type == t_float) {
+		return f;
+	} else if(type == t_double) {
+		return (float)d;
+	}
+}
+double Arg::to_double() {
+	if(type == t_int)
+		return i;
+	else if(type == t_string) {
+		try {
+			return std::stod(s);
+		} catch(...) {
+			return 0;
+		}
+	} else if(type == t_float) {
+		return (int)f;
+	} else if(type == t_double) {
+		return (int)d;
+	}
+}
+std::string Arg::to_string() {
+	return *this;
+}
 
 /*
 Arg::operator double() {
@@ -189,16 +226,14 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 	add_command("+", [](int a, std::vector<Arg> arg) {
 		int sum=a;
 		for(auto& b : arg) {
-			try_convert(b, Arg::t_int);
-			sum += b; 
+			sum += b.to_int(); 
 		}
 		return sum;
 	});
 	add_command("+f", [](float a, std::vector<Arg> arg) {
 		float sum=0;
 		for(auto& a : arg) {
-			try_convert(a, Arg::t_float);
-			sum += a.f;
+			sum += a.to_float();
 		}
 		return sum;
 	});
@@ -206,8 +241,7 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 		int sum=arg[0];
 		for(int i=1; i < arg.size(); i++) {
 			Arg& a = arg[i];
-			try_convert(a, Arg::t_int);
-			sum -= a.i;
+			sum -= a.to_int();
 		}
 		return sum;
 	});
@@ -216,15 +250,14 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 		for(int i=1; i < arg.size(); i++) {
 			Arg& a = arg[i];
 			try_convert(a, Arg::t_float);
-			sum -= a.f;
+			sum -= a.to_float();
 		}
 		return sum;
 	});
 	add_command("*", [](int first, std::vector<Arg> arg) {
 		int prod=first;
 		for(auto& a : arg) {
-			try_convert(a, Arg::t_int);
-			prod *= a.i; 
+			prod *= a.to_int(); 
 		}
 		return prod;
 	});
@@ -232,7 +265,7 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 		float prod=1;
 		for(auto& a : arg) {
 			try_convert(a, Arg::t_float);
-			prod *= a.f; 
+			prod *= a.to_float(); 
 		}
 		return prod;
 	});
@@ -1159,7 +1192,7 @@ void Command::set(std::string variable, const Arg& value) {
 	if(it != m_strings.end()) {
 		m_variables[it->second] = value;
 	} else {
-		m_variables[alloc_string(variable)] = value;
+		m_variables[alloc_variable(variable)] = value;
 	}
 }
 
