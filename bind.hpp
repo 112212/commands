@@ -8,7 +8,6 @@
 class Bind {
 	private:
 		std::unordered_map<int, Commands::Arg> m_key_executable;
-		
 	public:
 		Bind();
 		~Bind();
