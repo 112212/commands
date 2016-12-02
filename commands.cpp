@@ -1033,8 +1033,6 @@ Arg Command::get(std::string variable) {
 	auto it = m_strings.find(variable);
 	if(it != m_strings.end()) {
 		return m_variables[it->second];
-	} else {
-		alloc_variable(variable);
 	}
 	Arg a;
 	a.type = Arg::t_void;

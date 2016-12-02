@@ -86,7 +86,8 @@ int main() {
 	
 	auto tp = std::chrono::high_resolution_clock::now();
 	// Arg a = Command::Compile("set myfunc [ hehe $1 ]; myfunc \"FUCK YEA :D\"; set yeah \"very awesome\"; loop 10 [ hehe $yeah ] ; set hehe \"very $cool (hehe haha) ; awesome :D nice\"; lol $hehe 5 6 (hehe troll (get hehe) $hehe 66 hehe (lolzy (hehe lelele)));set hehe 5");
-	Arg a = Command::Compile("set a 5; set lolzyfunc [ print $1 $3 $0; loop 1 [ print lol $a ]; set a (inc $a 1); if (lt $a 500) ($) (print njahahaha; $; print \"DONE :D\") ]; lolzyfunc heheh very nice :D; loop 10 [ hehe $yeah ]; set hehe 5");
+	// Arg a = Command::Compile("set a 5; set lolzyfunc [ print $1 $3 $0; loop 1 [ print lol $a ]; set a (inc $a 1); if (lt $a 500) ($) (print njahahaha; $; print \"DONE :D\") ]; lolzyfunc heheh very nice :D; loop 10 [ hehe $yeah ]; set hehe 5");
+	Arg a = Command::Compile("set a 5; set lolzyfunc [ print $1 $3 $0; loop 1 [ print lol $a ]; ]");
 	// for(int i=0; i < 11695; i++)
 		// test();
 		Command::Execute(a,args);
