@@ -30,7 +30,7 @@
 +	remove char completely
 -	function must not be called if parameter conversion failed
 -	if last param is std::string then everything past that param is parsed and treated as string (using function signature)
--	dynamic function signature [#sfi; print $1 $2 $3] ; $1 - string, $2 float, $3 - int
+/	dynamic function signature [#sfi; print $1 $2 $3] ; $1 - string, $2 float, $3 - int
 -	reference counting
 -------------------------------
 

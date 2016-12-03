@@ -327,6 +327,7 @@ class Command {
 		Arg get(std::string variable);
 		std::string get_string(std::string variable);
 		void set(std::string variable, const Arg& value);
+		bool exist(const std::string& variable);
 		
 		Arg compile(const std::string& command);
 		Arg execute(const std::string& command);
@@ -360,6 +361,9 @@ class Command {
 		}
 		static std::string GetString(const std::string& variable) {
 			return singleton.get_string(variable);
+		}
+		static bool Exist(const std::string& variable) {
+			return singleton.exist(variable);
 		}
 		
 		template<typename T>

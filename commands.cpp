@@ -7,7 +7,7 @@ using std::endl;
 #include <sstream>
 #include <cmath>
 namespace Commands {
-	
+
 // #define VARIABLE_CHARACTER_SET_SIZE 2*26+10
 #define VARIABLE_CHARACTER_SET_SIZE 256
 struct node {
@@ -1178,11 +1178,16 @@ std::string Command::get_string(std::string variable) {
 Arg Command::get(std::string variable) {
 	auto it = m_strings.find(variable);
 	if(it != m_strings.end()) {
-		return m_variables[it->second];
+		auto it1 = m_variables.find(it->second);
+		if(it1 != m_variables.end())
+			return it1->second;
 	}
-	Arg a;
-	a.type = Arg::t_void;
-	return a;
+	return Arg();
+}
+
+bool Command::exist(const std::string& variable) {
+	auto it = m_strings.find(variable);
+	return it != m_strings.end() && m_variables.find(it->second) != m_variables.end();
 }
 
 void Command::set(std::string variable, const Arg& value) {
