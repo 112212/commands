@@ -2,6 +2,8 @@
 #include <SDL2/SDL.h>
 #include <fstream>
 
+#define MWHEEL 5000
+
 static std::unordered_map<int, std::string> key_to_str;
 static std::unordered_map<std::string, int> str_to_key = {
 	{"F1", SDLK_F1},
@@ -40,7 +42,8 @@ static std::unordered_map<std::string, int> str_to_key = {
 	{"y", SDLK_y},
 	{"z", SDLK_z},
 	{"enter", SDLK_RETURN},
-	{"lshift", SDLK_LSHIFT}
+	{"lshift", SDLK_LSHIFT},
+	{"mwheel", MWHEEL}
 	
 };
 
@@ -76,6 +79,7 @@ void Bind::UnsetKey(std::string key) {
 		m_key_executable.erase(it->second);
 	}
 }
+
 bool Bind::SetKey(std::string key, std::string command) {
 	auto it = str_to_key.find(key);
 	if(it != str_to_key.end()) {
@@ -85,22 +89,42 @@ bool Bind::SetKey(std::string key, std::string command) {
 		}
 		return true;
 	}
+	
 	return false;
 }
 
 
-bool Bind::OnEvent(SDL_Event& e) {
+bool Bind::SetKey(std::string key, int value) {
+	auto it = str_to_key.find(key);
+	if(it != str_to_key.end()) {
+		m_key_executable[it->second] = Arg(value);
+		return true;
+	}
+	return false;
+}
+
+
+Commands::Arg Bind::OnEvent(SDL_Event& e) {
 	
 	if(e.type == SDL_KEYDOWN) {
 		auto it = m_key_executable.find((int)e.key.keysym.sym);
-		if(it != m_key_executable.end()) {
+		if(it != m_key_executable.end() && it->second.type == Arg::t_executable) {
 			Arg &code = it->second;
 			std::vector<Arg> args;
 			Command::Execute(code, args, true);
-			return true;
+			return code;
+		}
+	} else if(e.type == SDL_MOUSEWHEEL) {
+		auto it = m_key_executable.find(MWHEEL);
+		if(it != m_key_executable.end() && it->second.type == Arg::t_executable) {
+			Arg &code = it->second;
+			std::vector<Arg> args;
+			args.emplace_back(int(e.wheel.y));
+			Command::Execute(code, args, true);
+			return code;
 		}
 	}
-	return false;
+	return Commands::Arg(0);
 }
 
 void Bind::SaveKeys(std::string filename) {

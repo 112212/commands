@@ -19,7 +19,7 @@
 +	compiled commands by using syntax [ ]
 	+	commands and variables are put in vector
 
-
+-	comments starts with ; at start of line, and save comments and try save file in same order
 +	function signature
 +	tabbing for commands and variables
 -	smart tabbing for local variables
@@ -160,3 +160,9 @@ compiling code:
 a b c * d + e  <=>  a b (* c (+ d e))
 
 ----------------------
+
+[ 
+
+syntax:
+
+stmt ::= {stmt ';'}

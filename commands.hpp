@@ -13,6 +13,8 @@
 #include <set>
 #include <type_traits>
 
+#ifndef CALL_TUPLE_ARGS
+#define CALL_TUPLE_ARGS
 // ----- function type information
 template< typename t, std::size_t n, typename = void >
 struct function_type_information;
@@ -37,6 +39,19 @@ struct function_type_information< ftor, n,
 	typename std::conditional< false, decltype( & ftor::operator () ), void >::type >
 	: function_type_information< decltype( & ftor::operator () ), n > {};
 // --------------------------------------
+
+template <typename F, typename Tuple, std::size_t... Is>
+decltype(auto) tuple_call(F f, Tuple && t, std::index_sequence<Is...> is) {
+	return f(std::get<Is>( std::forward<Tuple>(t) )...);
+}
+
+template <typename F, typename Tuple>
+decltype(auto) call(F f, Tuple && t) {
+	using ttype = typename std::decay<Tuple>::type;
+	return tuple_call(f, std::forward<Tuple>(t), std::make_index_sequence<std::tuple_size<ttype>::value>{});
+}
+#endif
+
 
 namespace Commands {
 
@@ -79,88 +94,25 @@ struct Arg {
 		this->type = type;
 		this->s = s;
 	}
-	Arg& operator=(const Arg& a) {
-		// if(this == 0) return *this;
-		switch(a.type) {
-			case t_float:
-				f = a.f;
-				break;
-			case t_double:
-				d = a.d;
-				break;
-			case t_string:
-				new (&s) std::string(a.s);
-				break;
-			default:
-				i = a.i;
-		}
-		type = a.type;
-		
-		return *this;
-	}
+	Arg& operator=(const Arg& a);
 	Arg(const Arg& a) : s() {
 		*this = a;
 	}
-
-	void dump();
 	
-	operator int() {
-		if(type == t_int)
-			return i;
-		else if(type == t_string) {
-			try {
-				return std::stoi(s);
-			} catch(...) {
-				return 0;
-			}
-		} else if(type == t_float) {
-			return (int)f;
-		} else if(type == t_double) {
-			return (int)d;
-		}
-	}
-	operator std::string() {
-		if(type == t_string) {
-			return s;
-		} else if(type == t_int) {
-			return std::to_string(i);
-		} else if(type == t_float) {
-			return std::to_string(f);
-		} else if(type == t_double) {
-			return std::to_string(d);
-		} else return "";
-	}
+	int to_int();
+	float to_float();
+	double to_double();
+	std::string to_string();
+
+	void dump() const;
+	
+	operator int();
+	// operator float();
+	// operator double();
+	operator std::string();
 	~Arg(){}
 };
 
-		
-// --------- function call: Tuple as arguments
-namespace detail
-{
-    template <typename ret, typename F, typename Tuple, bool Done, int Total, int... N>
-    struct call_impl {
-        static ret call(F& f, Tuple && t) {
-			return call_impl<ret, F, Tuple, Total == 1 + sizeof...(N), Total, N..., sizeof...(N)>::call(f, std::forward<Tuple>(t));
-        }
-    };
-
-    
-    template <typename ret, typename F, typename Tuple, int Total, int... N>
-    struct call_impl<ret, F, Tuple, true, Total, N...> {
-        static ret call(F& f, Tuple && t) {
-			return f(std::get<N>(std::forward<Tuple>(t))...);
-        }
-    };
-    
-}
-
-// user invokes this
-template <typename ret, typename F, typename Tuple>
-ret call(F& f, Tuple && t) {
-    using ttype = typename std::decay<Tuple>::type;
-	return detail::call_impl<ret, F, Tuple, 0 == std::tuple_size<ttype>::value, std::tuple_size<ttype>::value>::call(f, std::forward<Tuple>(t));
-}
-// -----------------------
 
 
 struct node;
@@ -200,13 +152,7 @@ class Command {
 		struct adapter_function_generator {
 		
 			static void handle_element(int& i, std::vector<Arg>& args) {
-				if(args[n].type == Arg::t_int) {
-					i = args[n].i;
-				} else if(args[n].type == Arg::t_string) {
-					i = std::stoi(args[n].s);
-				}
-				else
-					throw CommandException("cannot convert to integer");
+				i = args[n].to_int();
 			}
 			static void handle_element(float& f, std::vector<Arg>& args) {
 				if(args[n].type == Arg::t_float) {
@@ -216,20 +162,20 @@ class Command {
 				}
 			}
 			static void handle_element(double& d, std::vector<Arg>& args) {
-				d = args[n].d;
+				d = args[n].to_double();
 			}
 			static void handle_element(Arg& a, std::vector<Arg>& args) {
 				a = args[n];
 			}
 			static void handle_element(std::string& s, std::vector<Arg>& args) {
 				s = (std::string)args[n];
-				if(n+1 == N && args.size() != N) {
-					for(int i=n+1; i < args.size(); i++) {
-						Arg& a = args[i];
-						if(a.type == Arg::t_executable || a.type == Arg::t_void) break;
-						s += " " + (std::string)a;
-					}
-				}
+				// if(n+1 == N && args.size() != N) {
+					// for(int i=n+1; i < args.size(); i++) {
+						// Arg& a = args[i];
+						// if(a.type == Arg::t_executable || a.type == Arg::t_void) break;
+						// s += " " + (std::string)a;
+					// }
+				// }
 			}
 			static void handle_element(std::vector<Arg>& e, std::vector<Arg>& args) {
 				e.resize(args.size()-n);
@@ -271,7 +217,8 @@ class Command {
 			static Arg adapter_function(F func, std::vector<Arg>& args, Tuple &tuple) {
 				using result = typename function_type_information<F,0>::result;
 				Arg a;
-				handle_result(a, call<result>(func, tuple));
+				// handle_result(a, call<result>(func, tuple));
+				handle_result(a, call(func, tuple));
 				return a;
 			}
 			
@@ -282,7 +229,7 @@ class Command {
 			
 			template<typename F, typename Tuple>
 			static Arg adapter_function(F func, std::vector<Arg>& args, Tuple &tuple) {
-				call<void>(func, tuple);
+				call(func, tuple);
 				return Arg();
 			}
 			
@@ -353,7 +300,7 @@ class Command {
 		node* sweep_node(const std::string& cmd, int cursor);
 		void fill(node* n, std::vector<std::string>& str, std::string s, int limit);
 		Arg& get_variable(Executable& e, int index);
-		void printCompiledCode(std::vector<Arg>& c);
+		void printCompiledCode(const std::vector<Arg>& c);
 		
 		node* m_root_functions;
 		node* m_root_variables;

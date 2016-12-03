@@ -31,6 +31,7 @@ Command Command::singleton __attribute__((init_priority(200))) ();
 
 using namespace Commands;
 
+// -------------- [ ARG ] ---------------------
 inline void try_convert(Arg& a, Arg::type_enum t) {
 	if(a.type == t) return;
 	
@@ -68,6 +69,123 @@ inline void try_convert(Arg& a, Arg::type_enum t) {
 			}
 			break;
 	}
+}
+
+int Arg::to_int() {
+	return *this;
+}
+
+float Arg::to_float() {
+	if(type == t_int)
+		return i;
+	else if(type == t_string) {
+		try {
+			return std::stof(s);
+		} catch(...) {
+			return 0;
+		}
+	} else if(type == t_float) {
+		return f;
+	} else if(type == t_double) {
+		return (float)d;
+	}
+}
+double Arg::to_double() {
+	if(type == t_int)
+		return i;
+	else if(type == t_string) {
+		try {
+			return std::stod(s);
+		} catch(...) {
+			return 0;
+		}
+	} else if(type == t_float) {
+		return (int)f;
+	} else if(type == t_double) {
+		return (int)d;
+	}
+}
+std::string Arg::to_string() {
+	return *this;
+}
+
+/*
+Arg::operator double() {
+	if(type == t_int)
+		return i;
+	else if(type == t_string) {
+		try {
+			return std::stod(s);
+		} catch(...) {
+			return 0;
+		}
+	} else if(type == t_float) {
+		return (int)f;
+	} else if(type == t_double) {
+		return (int)d;
+	}
+}
+Arg::operator float() {
+	if(type == t_int)
+		return i;
+	else if(type == t_string) {
+		try {
+			return std::stof(s);
+		} catch(...) {
+			return 0;
+		}
+	} else if(type == t_float) {
+		return f;
+	} else if(type == t_double) {
+		return (float)d;
+	}
+}
+*/
+
+Arg& Arg::operator=(const Arg& a) {
+	// if(this == 0) return *this;
+	switch(a.type) {
+		case t_float:
+			f = a.f;
+			break;
+		case t_double:
+			d = a.d;
+			break;
+		case t_string:
+			new (&s) std::string(a.s);
+			break;
+		default:
+			i = a.i;
+	}
+	type = a.type;
+	
+	return *this;
+}
+Arg::operator int() {
+	if(type == t_int)
+		return i;
+	else if(type == t_string) {
+		try {
+			return std::stoi(s);
+		} catch(...) {
+			return 0;
+		}
+	} else if(type == t_float) {
+		return (int)f;
+	} else if(type == t_double) {
+		return (int)d;
+	}
+}
+Arg::operator std::string() {
+	if(type == t_string) {
+		return s;
+	} else if(type == t_int) {
+		return std::to_string(i);
+	} else if(type == t_float) {
+		return std::to_string(f);
+	} else if(type == t_double) {
+		return std::to_string(d);
+	} else return "";
 }
 
 // -----------------------------------------------------------
@@ -108,40 +226,38 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 	add_command("+", [](int a, std::vector<Arg> arg) {
 		int sum=a;
 		for(auto& b : arg) {
-			try_convert(b, Arg::t_int);
-			sum += b; 
+			sum += b.to_int(); 
 		}
 		return sum;
 	});
 	add_command("+f", [](float a, std::vector<Arg> arg) {
 		float sum=0;
 		for(auto& a : arg) {
+			sum += a.to_float();
+		}
+		return sum;
+	});
+	add_command("-", [](std::vector<Arg> arg) {
+		int sum=arg[0];
+		for(int i=1; i < arg.size(); i++) {
+			Arg& a = arg[i];
+			sum -= a.to_int();
+		}
+		return sum;
+	});
+	add_command("-f", [](std::vector<Arg> arg) {
+		float sum=arg[0];
+		for(int i=1; i < arg.size(); i++) {
+			Arg& a = arg[i];
 			try_convert(a, Arg::t_float);
-			sum += a.f;
-		}
-		return sum;
-	});
-	add_command("-", [](int a, std::vector<Arg> arg) {
-		int sum=a;
-		for(int i = 1; i < arg.size(); i++) {
-			try_convert(arg[i], Arg::t_int);
-			sum -= arg[i].i; 
-		}
-		return sum;
-	});
-	add_command("-f", [](float a, std::vector<Arg> arg) {
-		float sum=a;
-		for(int i = 1; i < arg.size(); i++) {
-			try_convert(arg[i], Arg::t_float);
-			sum -= arg[i].f; 
+			sum -= a.to_float();
 		}
 		return sum;
 	});
 	add_command("*", [](int first, std::vector<Arg> arg) {
 		int prod=first;
 		for(auto& a : arg) {
-			try_convert(a, Arg::t_int);
-			prod *= a; 
+			prod *= a.to_int(); 
 		}
 		return prod;
 	});
@@ -149,7 +265,7 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 		float prod=1;
 		for(auto& a : arg) {
 			try_convert(a, Arg::t_float);
-			prod *= a; 
+			prod *= a.to_float(); 
 		}
 		return prod;
 	});
@@ -215,6 +331,9 @@ add_command("pow", [](Arg a, Arg b) -> int{
 	add_command("string", [](Arg a) -> std::string {
 		return (std::string)a;
 	});
+	add_command("int", [](Arg a) -> int {
+		return a;
+	});
 #endif
 }
 // ---------------------------------------------------------------------------------
@@ -231,7 +350,7 @@ add_command("pow", [](Arg a, Arg b) -> int{
  */
 char const* type_to_name[50] = { "t_void", "t_int", "t_float", "t_double", "t_string", "t_string_ref", 
 	"t_eval", "t_template", "t_executable", "t_variable", "t_function", "t_get", "t_set", "t_if", "t_param", "t_loop", "t_goto" };
-void Arg::dump() {
+void Arg::dump() const {
 	// if(type >= 19 || type < 0) return;
 	cout << "(" << type_to_name[(int)type] << ", ";
 	switch(type) {
@@ -247,9 +366,9 @@ void Arg::dump() {
 	cout << ")";
 }
 
-void Command::printCompiledCode(std::vector<Arg>& code) {
+void Command::printCompiledCode(const std::vector<Arg>& code) {
 	cout << code.size() << " code: ";
-	for(auto& a : code) {
+	for(const auto& a : code) {
 		a.dump();
 		cout << ", ";
 	}
@@ -566,11 +685,13 @@ const std::string Command::help(const std::string& command) {
 static bool isNumeric(std::string& s) {
 	if(s.size() == 0) return false;
 	if(!isdigit(s[0]) && s[0] != '.' && s[0] != '-') return false;
+	int num_digits = 0;
 	for(int i=1; i < s.size()-1; i++) {
 		if(!isdigit(s[i]) && s[i] != '.') return false;
+		num_digits = 0;
 	}
 	
-	if(!isdigit(s.back()) && s.back() != '.' && !(s.back() == 'f' && s.size() != 1) ) return false;
+	if(!(s.back() == 'f' && num_digits != 0) && !isdigit(s.back())) return false;
 	return true;
 }
 static bool isOperator(char c) {
@@ -630,6 +751,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 	bool isescaping = false;
 	bool iscommand = true;
 	bool isvariable = false;
+	bool isnewline = code.empty();
 	bool variable_function = false;
 	int last_func = code.size();
 	int argument = 0;
@@ -652,8 +774,14 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 		const char &c = *s;
 		
 		if(state != string) {
-			
-			if((iscommand && c != '$' && c != ' ' && c != TEMPLATE_START && c != TEMPLATE_END && c != EVAL_START && c != EVAL_END) || isIdent(c) || c == ESCAPING_CHARACTER) {
+			if(isnewline && (c == ';' || c == '#')) {
+				while(*s && *s != '\n')s++;
+				continue;
+			}
+			if( // is identifier or escape character?
+				(iscommand && c != '$' && c != ' ' && c != TEMPLATE_START && c != TEMPLATE_END && c != EVAL_START && c != EVAL_END) || 
+				isIdent(c) || 
+				c == ESCAPING_CHARACTER) {
 				
 				if(state == space) {
 					start = s;
@@ -734,8 +862,19 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 			}
 		}
 		
-		// triggers
-		if(!isescaping && (c == '=' || c == ' ' || c == '\0' || c == EVAL_END || c == TEMPLATE_END || c == FUNCTION_DELIMITER || c == STRING_OPERATOR || c == '\n')) {
+		// --------- triggers ----------
+		if(!isescaping && 
+			(c == '=' || 
+			c == ' ' || 
+			c == '\0' || 
+			c == EVAL_END || 
+			c == TEMPLATE_END || 
+			c == FUNCTION_DELIMITER || 
+			c == STRING_OPERATOR || 
+			c == '\n')) {
+				
+			if(c=='\n') isnewline = true;
+			else isnewline = false;
 			
 			bool isstring = false;
 			if(c == STRING_OPERATOR) {
@@ -754,6 +893,8 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 				Arg a;
 				argument++;
 				if(isvariable) {
+					// its variable
+					
 					debug(cout << "variable: " << ident << endl);
 					
 					if(isNumeric(ident)) {
@@ -792,6 +933,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 						}
 					}
 				} else {
+					// not variable
 					
 					if(!isstring) {
 						// try conversions
@@ -820,6 +962,8 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 				}
 				
 				if(iscommand) {
+					// its first argument of eval (command)
+					
 					iscommand = false;
 					// compiletime: (t_function, n_params), (t_int, func index)
 					// runtime: (t_function, n_params), (t_string, func_name)
@@ -854,6 +998,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 						}
 					}
 				} else {
+					/*
 					if(argument == 1) {
 						// try to resolve get/set
 						if(code[last_func].type == Arg::t_get) {
@@ -865,6 +1010,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 							
 						}
 					}
+					*/
 					
 					code.push_back(a);
 				}
@@ -1044,7 +1190,7 @@ void Command::set(std::string variable, const Arg& value) {
 	if(it != m_strings.end()) {
 		m_variables[it->second] = value;
 	} else {
-		m_variables[alloc_string(variable)] = value;
+		m_variables[alloc_variable(variable)] = value;
 	}
 }
 
@@ -1099,6 +1245,12 @@ Arg Command::execute(const Arg& a, const std::vector<Arg>& params, bool global_c
 			return Arg();
 		}
 	}
+}
+
+Arg Command::execute(const std::string& command) {
+	Arg a = compile(command);
+	std::vector<Arg> args;
+	return execute(a,args,true);
 }
 
 Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs, bool& global_context) {
@@ -1273,6 +1425,14 @@ go_back:
 						break;
 					}
 					case Arg::t_int:
+						/*
+						cout << "CODE: " << endl;
+						printCompiledCode(e.code);
+						cout << "PARAMS: " << endl;
+						printCompiledCode(params);
+						b.dump();
+						cout << endl;
+						*/
 						func = b;
 						func.type = Arg::t_function;
 						break;
@@ -1512,8 +1672,3 @@ go_back:
 	return ret;
 }
 
-Arg Command::execute(const std::string& command) {
-	Arg a = compile(command);
-	std::vector<Arg> args;
-	return execute(a,args,true);
-}
