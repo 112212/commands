@@ -110,7 +110,7 @@ struct Arg {
 	// operator float();
 	// operator double();
 	operator std::string();
-	~Arg(){}
+	~Arg();
 };
 
 

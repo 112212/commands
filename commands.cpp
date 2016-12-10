@@ -108,6 +108,12 @@ double Arg::to_double() {
 std::string Arg::to_string() {
 	return *this;
 }
+Arg::~Arg() {
+	if(type == Arg::t_string) {
+		using std::string;
+		s.~string();
+	}
+}
 
 /*
 Arg::operator double() {
