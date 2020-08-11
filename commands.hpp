@@ -5,6 +5,7 @@
 
 #include <sstream>
 #include <unordered_map>
+#include <map>
 #include <vector>
 #include <string>
 #include <exception>
@@ -12,6 +13,9 @@
 #include <tuple>
 #include <set>
 #include <type_traits>
+
+#include <typeinfo>
+#include <typeindex>
 
 #ifndef CALL_TUPLE_ARGS
 #define CALL_TUPLE_ARGS
@@ -65,36 +69,78 @@ class CommandException {
 	std::string& what() { return reason; }
 };
 
+struct Arg;
+
+struct ObjectInfo {
+	std::type_index type;
+	
+	// std::function<void*(std::vector<Arg>)> constructor;
+	std::function<void(void* ptr)> destructor;
+	std::map<std::string, std::function<Arg(void*, std::vector<Arg>)>> methods;
+};
+
+struct Object {
+	ObjectInfo* type;
+	void* ptr;
+	int ref_cnt;
+	Object(ObjectInfo* objtype, void* obj) : ref_cnt(0) {
+		this->type = objtype;
+		this->ptr = obj;
+	}
+	void inc_ref() {
+		ref_cnt ++;
+	}
+	void dec_ref() {
+		ref_cnt --;
+		if(ref_cnt <= 0) {
+			type->destructor(ptr);
+		}
+	}
+};
+
 struct Arg {
-	enum type_enum { t_void, t_int, t_float, t_double, t_string, t_string_ref, // basic types
+	enum type_enum { t_void, t_object, t_int, t_float, t_double, t_string, t_string_ref, // basic types
 		   t_eval, t_template, t_executable, t_variable, 
 		   t_function, t_get, t_set, t_if, t_param, t_loop, t_goto, t_current_executable_reference  }
 		type;
 	
 	union {
+		Object o;
 		int i;
 		float f;
 		double d;
 		std::string s;
 	};
+	
 	Arg(type_enum type = t_void)  { this->type = type; }
+	
+	Arg(Object o, type_enum type = t_object) {
+		this->type = type;
+		this->o = o;
+	}
+	
 	Arg(int i, type_enum type = t_int) {
 		this->type = type;
 		this->i = i;
 	}
+	
 	Arg(float f, type_enum type = t_float) {
 		this->type = type;
 		this->f = f;
 	}
+	
 	Arg(double d, type_enum type = t_double) {
 		this->type = type;
 		this->d = d;
 	}
+	
 	Arg(const std::string& s, type_enum type = t_string) : s() {
 		this->type = type;
 		this->s = s;
 	}
+	
 	Arg& operator=(const Arg& a);
+	
 	Arg(const Arg& a) : s() {
 		*this = a;
 	}
@@ -103,6 +149,19 @@ struct Arg {
 	float to_float();
 	double to_double();
 	std::string to_string();
+	
+	template<typename T=Arg>
+	T* to_object(T *t=0) {
+		if(type == t_object) {
+			if(o.type->type == typeid(T)) {
+				return static_cast<T*>(o.ptr);
+			} else {
+				return 0;
+			}
+		} else {
+			return 0;
+		}
+	}
 
 	void dump() const;
 	
@@ -151,18 +210,25 @@ class Command {
 		template<bool isvoid, bool done, int n, int N>
 		struct adapter_function_generator {
 		
+			static void handle_element(Object& o, std::vector<Arg>& args) {
+				o = args[n].o;
+			}
 			static void handle_element(int& i, std::vector<Arg>& args) {
 				i = args[n].to_int();
 			}
 			static void handle_element(float& f, std::vector<Arg>& args) {
-				if(args[n].type == Arg::t_float) {
-					f = args[n].f;
-				} else if(args[n].type == Arg::t_string) {
+				if(args[n].type == Arg::t_string) {
 					f = std::stof(args[n].s);
+				} else {
+					f = args[n].to_float();
 				}
 			}
 			static void handle_element(double& d, std::vector<Arg>& args) {
-				d = args[n].to_double();
+				if(args[n].type == Arg::t_string) {
+					d = std::stod(args[n].s);
+				} else {
+					d = args[n].to_double();
+				}
 			}
 			static void handle_element(Arg& a, std::vector<Arg>& args) {
 				a = args[n];
@@ -194,6 +260,10 @@ class Command {
 			}
 		};
 		
+		static void handle_result(Arg& arg, Object r) {
+			arg.type = Arg::t_object;
+			arg.o = r;
+		}
 		static void handle_result(Arg& arg, int r) {
 			arg.type = Arg::t_int;
 			arg.i = r;
@@ -304,7 +374,7 @@ class Command {
 		
 		node* m_root_functions;
 		node* m_root_variables;
-		static Command singleton;
+		static Command *singleton;
 		
 	public:
 		Command();
@@ -318,6 +388,7 @@ class Command {
 			m_command_signatures[idx] = s;
 			m_commands[idx] = adapter< std::tuple_size<Tuple>::value == 0, std::tuple_size<Tuple>::value, Tuple >::make_adapter(func);
 			add_to_tree(m_root_functions, name);
+			return true;
 		}
 		void saveVariablesToFile(std::string filename, bool overwrite = false);
 		void loadFromFile(std::string filename);
@@ -343,62 +414,64 @@ class Command {
 		
 		// ----------------------------------------------
 		// singleton functions
-		static Command& GetSingleton() { return singleton; }
-		static void SetSingleton(Command* r) { singleton = *r; }
+		static Command& GetSingleton() { if (singleton) return *singleton; else { singleton = new Command(); return *singleton;} }
+		static void SetSingleton(Command* r) { singleton = r; }
 		
 		//
 		static void SaveVarariablesToFile(std::string filename, bool overwrite = false) {
-			singleton.saveVariablesToFile(filename, overwrite);
+			GetSingleton().saveVariablesToFile(filename, overwrite);
 		}
 		static void LoadFromFile(std::string filename) {
-			singleton.loadFromFile(filename);
+			GetSingleton().loadFromFile(filename);
 		}
 		//
 		
 		// --- getting/setting variables
 		static Arg Get(const std::string& variable) {
-			return singleton.get(variable);
+			return GetSingleton().get(variable);
 		}
+		
 		static std::string GetString(const std::string& variable) {
-			return singleton.get_string(variable);
+			return GetSingleton().get_string(variable);
 		}
+		
 		static bool Exist(const std::string& variable) {
-			return singleton.exist(variable);
+			return GetSingleton().exist(variable);
 		}
 		
 		template<typename T>
 		static void Set(const std::string& variable, T value) {
 			Arg v = Arg(value);
-			singleton.set(variable, v);
+			GetSingleton().set(variable, v);
 		}
 		//
 		
 		
 		template<typename F>
 		static bool AddCommand(const std::string& name, F func) {
-			singleton.add_command(name, func);
+			return GetSingleton().add_command(name, func);
 		}
 		
 		
 		static Arg Execute(const std::string& command) {
-			return singleton.execute(command);
+			return GetSingleton().execute(command);
 		}
 		static Arg Execute(const Arg& code, const std::vector<Arg>& args, bool global_context = false) {
-			return singleton.execute(code, args, global_context);
+			return GetSingleton().execute(code, args, global_context);
 		}
 		static Arg Compile(const std::string& command) {
-			return singleton.compile(command);
+			return GetSingleton().compile(command);
 		}
 		
 		
 		static std::vector<std::string> Search(std::string command, int cursor, int limit = 10) {
-			return singleton.search(command, cursor, limit);
+			return GetSingleton().search(command, cursor, limit);
 		}
 		static const std::string Help(const std::string& command) {
-			return singleton.help(command);
+			return GetSingleton().help(command);
 		}
 		static std::string Complete(const std::string& half_command, int cursor) {
-			return singleton.complete(half_command, cursor);
+			return GetSingleton().complete(half_command, cursor);
 		}
 		// -----------------------------------------------
 };

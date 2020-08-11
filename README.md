@@ -31,3 +31,17 @@ COMMAND(int, less, (int a, int b)) {
 Command::AddCommand("unbind", [&](std::string msg) {
 	cout << msg << endl;
 });
+
+
+
+## Objects
+struct obj {
+	int x,y,z;
+}
+ObjectInfo obj_info{.type=typeid(obj)};
+
+
+obj* o = Command::Get("some_object").to_object<obj>();
+if(o) {
+	std::cout << o->x << ", " << o->y << ", " << o->z << "\n";
+}

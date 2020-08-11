@@ -2,6 +2,7 @@
 using namespace std;
 #include "commands.hpp"
 using Commands::Arg;
+using Commands::Object;
 COMMAND(int, inc, (int a, int b)) {
 	// cout << "func: " << a << ", " << b << endl;
 	return a + b;
@@ -25,6 +26,7 @@ COMMAND(std::string, lol, (std::vector<Arg> args)) {
 
 COMMAND(int, str_func, (std::string a, std::string b)) {
 	cout << "str_func: " << a << ", " << b << endl;
+	return 0;
 }
 COMMAND(std::string, hehe, (std::string a)) {
 	// cout << "AWESOME hehe: " << a << endl;
@@ -40,6 +42,7 @@ COMMAND(int, print, (std::vector<Arg> args)) {
 		cout << " ";
 	}
 	cout << endl;
+	return 0;
 }
 
 COMMAND(int, lolzy, (int a)) {
@@ -66,6 +69,7 @@ COMMAND(int, variable_args, (std::string a, std::string b, std::vector<Arg> args
 			cout << "arg: " << arg.s << endl;
 		}
 	}
+	return 0;
 }
 
 #include <cstdio>
@@ -76,9 +80,47 @@ void test() {
 
 #include <chrono>
 
+struct my_vec3 {
+	float x,y,z;
+};
+Commands::ObjectInfo obj_vector{.type=typeid(my_vec3)};
+
+
+
+void vec_destroy(void* ptr) {
+	std::cout << "destroying vector\n";
+	delete static_cast<my_vec3*>(ptr);
+}
+
+
 int main() {
 	Command::AddCommand("w", [](std::string nick, std::string message) -> int {
 		cout << "nick: " << nick << ", message: " << message << endl;
+		return 0;
+	});
+	
+	Command::AddCommand("vec3", [](float x, float y, float z) -> Object {
+		std::cout << "creating vector: " << x << ","<<y << "," << z << "\n";
+		auto *v = new my_vec3;
+		v->x = x;
+		v->y = y;
+		v->z = z;
+		Object o(&obj_vector, v);
+		std::cout << "on creation: " << &obj_vector << "\n";
+		return o;
+	});
+	
+	Command::AddCommand("vec3p", [](Arg o) -> void {
+		auto *v = o.to_object<my_vec3>();
+		
+		// if(o.type == Arg::t_object) {
+			// if(o.o.type == &obj_vector) {
+				// auto &v = *static_cast<my_vec3*>(o.o.ptr);
+		if(v) {
+			std::cout << "vec3p : " << v->x << ", " << v->y << ", " << v->z << "\n";
+		} else {
+			std::cout << "vec3p returned null\n";
+		}
 	});
 	
 	cout << "compiling: \n";
@@ -97,7 +139,13 @@ int main() {
 	// cout << Command::Help("set") << endl;
 	
 	cout << "variable: " << Command::Get("hehe") << endl;
-	return 0;
+	// return 0;
+	
+	try {
+		Command::Execute("vec3p (vec3 1.32 3 5.7)");
+	} catch(...) {
+		cout << "vec3 exception\n";
+	}
 	
 	try {
 		Command::Execute("func hehe haha");

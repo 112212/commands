@@ -6,6 +6,7 @@ using std::endl;
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <array>
 namespace Commands {
 
 // #define VARIABLE_CHARACTER_SET_SIZE 2*26+10
@@ -27,7 +28,10 @@ struct node {
 	}
 };
 }
-Command Command::singleton __attribute__((init_priority(200))) ();
+
+// Command Command::singleton __attribute__((init_priority(1000))) ();
+// Command Command::singleton;
+Command* Command::singleton = 0;
 
 using namespace Commands;
 
@@ -68,6 +72,8 @@ inline void try_convert(Arg& a, Arg::type_enum t) {
 				a.d = a.d;
 			}
 			break;
+		default:
+			break;
 	}
 }
 
@@ -88,21 +94,25 @@ float Arg::to_float() {
 		return f;
 	} else if(type == t_double) {
 		return (float)d;
-	}
+	} else return 0;
 }
+
 double Arg::to_double() {
-	if(type == t_int)
-		return i;
-	else if(type == t_string) {
-		try {
-			return std::stod(s);
-		} catch(...) {
-			return 0;
-		}
-	} else if(type == t_float) {
-		return (int)f;
-	} else if(type == t_double) {
-		return (int)d;
+	switch(type) {
+		case t_int:
+			return i;
+		case t_string:
+			try {
+				return std::stod(s);
+			} catch(...) {
+				return 0;
+			}
+		case t_float:
+			return (int)f;
+		case t_double:
+			return d;
+		default:
+			return 0.0;
 	}
 }
 std::string Arg::to_string() {
@@ -160,13 +170,18 @@ Arg& Arg::operator=(const Arg& a) {
 		case t_string:
 			new (&s) std::string(a.s);
 			break;
+		case t_object:
+			o = a.o;
+			break;
 		default:
 			i = a.i;
+			break;
 	}
 	type = a.type;
 	
 	return *this;
 }
+
 Arg::operator int() {
 	if(type == t_int)
 		return i;
@@ -180,8 +195,9 @@ Arg::operator int() {
 		return (int)f;
 	} else if(type == t_double) {
 		return (int)d;
-	}
+	} else return 0;
 }
+
 Arg::operator std::string() {
 	if(type == t_string) {
 		return s;
@@ -229,6 +245,7 @@ Arg::operator std::string() {
 Command::Command() : m_root_functions(new node()), m_root_variables(new node()) {
 
 #ifdef ADD_BASIC_MATH_FUNCTIONS
+
 	add_command("+", [](int a, std::vector<Arg> arg) {
 		int sum=a;
 		for(auto& b : arg) {
@@ -309,11 +326,11 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 #endif	
 
 #ifdef ADD_ADVANCED_MATH_FUNCTIONS
-add_command("pow", [](Arg a, Arg b) -> int{
-	try_convert(a, Arg::t_int);
-	try_convert(b, Arg::t_int);
-	return pow(a,b);
-});
+	add_command("pow", [](Arg a, Arg b) -> int{
+		try_convert(a, Arg::t_int);
+		try_convert(b, Arg::t_int);
+		return powf(a,b);
+	});
 #endif
 	
 #ifdef ADD_TRIGONOMETRIC_FUNCTIONS
@@ -354,8 +371,9 @@ add_command("pow", [](Arg a, Arg b) -> int{
 		   t_end, t_eval, t_template, t_executable, t_variable, 
 		   t_function, t_get, t_set, t_if, t_param, t_loop  }
  */
-char const* type_to_name[50] = { "t_void", "t_int", "t_float", "t_double", "t_string", "t_string_ref", 
+char const* type_to_name[50] = { "t_void", "t_object", "t_int", "t_float", "t_double", "t_string", "t_string_ref", 
 	"t_eval", "t_template", "t_executable", "t_variable", "t_function", "t_get", "t_set", "t_if", "t_param", "t_loop", "t_goto" };
+
 void Arg::dump() const {
 	// if(type >= 19 || type < 0) return;
 	cout << "(" << type_to_name[(int)type] << ", ";
@@ -366,6 +384,9 @@ void Arg::dump() const {
 			cout << d; break;
 		case t_string:
 			cout << '"' << s << '"'; break;
+		case t_object:
+			cout << "\"\"";
+			break;
 		default:
 			cout << i; break;
 	}
@@ -520,6 +541,8 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 			case Arg::t_double:
 				s << " " << a.d;
 				break;
+			default:
+				break;
 		}
 	}
 }
@@ -546,6 +569,7 @@ char ident_to_index(char c) {
 	return c;
 	*/
 }
+
 char index_to_ident(char c) {
 	return c;
 	/*
@@ -700,9 +724,11 @@ static bool isNumeric(std::string& s) {
 	if(!(s.back() == 'f' && num_digits != 0) && !isdigit(s.back())) return false;
 	return true;
 }
+
 static bool isOperator(char c) {
 	return c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || c == '&' || c == '<' || c == '>' || c == '#';
 }
+
 static bool isIdent(char c) {
 	return isalnum(c) || isOperator(c) || c == '_' || c == '.' || c == '?';
 }
@@ -786,8 +812,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 			}
 			if( // is identifier or escape character?
 				(iscommand && c != '$' && c != ' ' && c != TEMPLATE_START && c != TEMPLATE_END && c != EVAL_START && c != EVAL_END) || 
-				isIdent(c) || 
-				c == ESCAPING_CHARACTER) {
+				isIdent(c) || c == ESCAPING_CHARACTER) {
 				
 				if(state == space) {
 					start = s;
@@ -1031,6 +1056,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 			#ifdef MUST_BE_VARIABLE_FOR_EQUAL_SET
 			if(variable_function) {
 			#endif
+			
 				// if(c == '=' || (last_func+2 < code.size()) ) {
 				if(c == '=' && argument == 1) {
 					// code.back(). dump();
@@ -1053,6 +1079,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 						continue;
 					}
 				}
+			
 			#ifdef MUST_BE_VARIABLE_FOR_EQUAL_SET
 			}
 			#endif
@@ -1085,6 +1112,7 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 		}
 		s++;
 	}
+	return 0;
 }
 
 // ---------------------------------------------------------------------
@@ -1139,6 +1167,8 @@ void Command::saveVariablesToFile(std::string filename, bool overwrite) {
 				break;
 			case Arg::t_double:
 				var += std::to_string(v.d);
+				break;
+			default:
 				break;
 		}
 		file.write(var.c_str(), var.size());
@@ -1267,21 +1297,28 @@ Arg Command::execute(const std::string& command) {
 Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs, bool& global_context) {
 	int i = ofs;
 	const Arg& a = e.code[i];
+	
 	switch(a.type) {
+		
 		case Arg::t_variable: {
-			if(global_context) 
+			if(global_context) {
 				return m_variables[a.i];
+			}
+				
 			auto it = e.vars.find(a.i);
 			if(it != e.vars.end()) {					
 				return it->second;
 			} else {
 				return m_variables[a.i];
 			}
+			
 			break;
 		}
+		
 		case Arg::t_current_executable_reference:
 			return Arg(e.id, Arg::t_executable);
 			break;
+			
 		case Arg::t_template: {
 			auto start_code = e.code.begin()+i+1;
 			Executable e1;
@@ -1306,13 +1343,16 @@ Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs
 			return Arg(idx, Arg::t_executable);
 			break;
 		}
+		
 		case Arg::t_string:
 			return a.s;
 			break;
+			
 		case Arg::t_eval:
 			ofs += a.i;
 			return run_executable(e, params, i+1, a.i);
 			break;
+			
 		case Arg::t_param: {
 			int param = a.i-1;
 			if(param >= 0 && param < params.size()) {
@@ -1328,6 +1368,9 @@ Arg Command::process_arg(Executable& e, const std::vector<Arg>& params, int& ofs
 			}
 			break;
 		}
+		
+		default:
+			break;
 	}
 	return a;
 }
@@ -1362,8 +1405,10 @@ Arg Command::run_executable(Executable& e, const std::vector<Arg>& params, int o
 	std::vector<Arg> tmp;
 	Arg func;
 	Arg ret;
+	
 go_back:
-	for(int i=ofs; i < to_ofs; i++) {
+
+	for(int i = ofs; i < to_ofs; i++) {
 		Arg& a = e.code[i];
 		debug(cout << "executing: ");
 		debug(a.dump());
@@ -1380,11 +1425,13 @@ go_back:
 				i++;
 				Arg& b = e.code[i];
 				switch(b.type) {
+					
 					case Arg::t_eval:
 						i++;
 						// func = run_executable(e, params, i, b.i);
 						return run_executable(e, params, i, b.i);
 						break;
+						
 					case Arg::t_string: {
 						
 						debug(cout << "resolving: " << b.s << endl);
@@ -1435,6 +1482,7 @@ go_back:
 						}
 						break;
 					}
+					
 					case Arg::t_int:
 						/*
 						cout << "CODE: " << endl;
@@ -1447,11 +1495,16 @@ go_back:
 						func = b;
 						func.type = Arg::t_function;
 						break;
+						
 					case Arg::t_executable:
 						func = b;
 						break;
+						
 					case Arg::t_template:
 						func = process_arg(e, params, i, global_context);
+						break;
+						
+					default:
 						break;
 				}
 				tmp.reserve(len);
@@ -1596,9 +1649,11 @@ go_back:
 				continue;
 				break;
 			// ------------------ RESOLVING ARGUMENTS ---------------------
+			
 			case Arg::t_current_executable_reference:
 				return Arg(e.id, Arg::t_executable);
 			break;
+			
 			case Arg::t_param: {
 				if(a.i < 0) {
 					int arg_start = -(a.i+1);
@@ -1615,6 +1670,7 @@ go_back:
 				}
 				break;
 			}
+			
 			case Arg::t_template:
 			case Arg::t_variable:
 			case Arg::t_eval:
@@ -1680,6 +1736,7 @@ go_back:
 	
 	debug(cout << "ending func (result: ";
 	ret.dump();cout << "\n");
+	
 	return ret;
 }
 
