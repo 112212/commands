@@ -1,4 +1,4 @@
-#include "bind.hpp"
+#include "Bind.hpp"
 #include <SDL2/SDL.h>
 #include <fstream>
 

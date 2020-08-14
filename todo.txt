@@ -1,4 +1,8 @@
++ set function now sets global variable and calls handlers when variable is changed
+- object dec_ref on local vars
 
+
+==============
 +	determined type of arguments(checked arguments), optional arguments which are left for function to check
 +	variable type of arguments and variable number of arguments ( just pass: std::vector<Variable> as only argument to function )
 +	deferred execution code which is compiled and may take arguments

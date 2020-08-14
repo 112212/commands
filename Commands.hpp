@@ -1,8 +1,10 @@
+/*
+	Easy to use powerful command interpreter with TCL or LISP similarity
+*/
 #ifndef COMMANDS_HPP
 #define COMMANDS_HPP
 
-
-
+#include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <map>
@@ -17,6 +19,7 @@
 #include <typeinfo>
 #include <typeindex>
 
+namespace Commands {
 #ifndef CALL_TUPLE_ARGS
 #define CALL_TUPLE_ARGS
 // ----- function type information
@@ -56,9 +59,6 @@ decltype(auto) call(F f, Tuple && t) {
 }
 #endif
 
-
-namespace Commands {
-
 class CommandException {
 	private:
 		std::string reason;
@@ -92,7 +92,13 @@ struct Object {
 	}
 	void dec_ref() {
 		ref_cnt --;
-		if(ref_cnt <= 0) {
+		if(ref_cnt == 0) {
+			type->destructor(ptr);
+		}
+	}
+	void check_ref() {
+		if(ref_cnt == 0) {
+			std::cout << "check_ref: dealloc\n";
 			type->destructor(ptr);
 		}
 	}
@@ -188,6 +194,8 @@ class Command {
 		std::unordered_map<int, std::string> m_strings_reverse;
 		
 		std::unordered_map<int, Arg> m_variables;
+		
+		std::unordered_map<std::string, std::function<void(Arg)>> m_on_set;
 		
 		struct Executable {
 			int id;
@@ -344,6 +352,7 @@ class Command {
 				};
 			}
 		};
+		
 		template<int N, typename Tuple>
 		struct adapter<true,N,Tuple> {
 			template<typename F>
@@ -367,7 +376,7 @@ class Command {
 		int alloc_string(const std::string& s);
 		int alloc_variable(const std::string& s);
 		void add_to_tree(node* root, std::string s);
-		node* sweep_node(const std::string& cmd, int cursor);
+		node* sweep_node(std::string& cmd, int cursor);
 		void fill(node* n, std::vector<std::string>& str, std::string s, int limit);
 		Arg& get_variable(Executable& e, int index);
 		void printCompiledCode(const std::vector<Arg>& c);
@@ -397,7 +406,7 @@ class Command {
 		
 		Arg get(std::string variable);
 		std::string get_string(std::string variable);
-		void set(std::string variable, const Arg& value);
+		void set(std::string variable, Arg& value);
 		bool exist(const std::string& variable);
 		
 		Arg compile(const std::string& command);
@@ -405,12 +414,13 @@ class Command {
 		Arg execute(const Arg& a, const std::vector<Arg>& args, bool global_context);
 		std::vector<std::string> search(const std::string& cmd, int cursor, int limit = 10);
 		std::string complete(const std::string& half_command, int cursor);
+		void onVariableChange(std::string s, std::function<void(Arg)> func) {
+			m_on_set[s] = func;
+		}
 		
 		// decompile
 		std::string get_executable_text(const Arg& arg);
 		void decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs, int len);
-		
-		
 		
 		// ----------------------------------------------
 		// singleton functions
@@ -472,6 +482,10 @@ class Command {
 		}
 		static std::string Complete(const std::string& half_command, int cursor) {
 			return GetSingleton().complete(half_command, cursor);
+		}
+		
+		static void OnVariableChange(std::string s, std::function<void(Arg)> func) {
+			GetSingleton().onVariableChange(s,func);
 		}
 		// -----------------------------------------------
 };

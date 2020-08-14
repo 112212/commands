@@ -1,6 +1,7 @@
 #include <iostream>
 using namespace std;
-#include "commands.hpp"
+#include "Commands.hpp"
+
 using Commands::Arg;
 using Commands::Object;
 COMMAND(int, inc, (int a, int b)) {
@@ -83,15 +84,11 @@ void test() {
 struct my_vec3 {
 	float x,y,z;
 };
-Commands::ObjectInfo obj_vector{.type=typeid(my_vec3)};
-
-
-
 void vec_destroy(void* ptr) {
 	std::cout << "destroying vector\n";
 	delete static_cast<my_vec3*>(ptr);
 }
-
+Commands::ObjectInfo obj_vector{typeid(my_vec3),vec_destroy};
 
 int main() {
 	Command::AddCommand("w", [](std::string nick, std::string message) -> int {
@@ -126,10 +123,15 @@ int main() {
 	cout << "compiling: \n";
 	std::vector<Arg> args;
 	
+	Command::OnVariableChange("a", [](Arg a) {
+		std::cout << "NEW a = " << a.to_string() << "\n";
+	});
+	
+	// ------------
 	auto tp = std::chrono::high_resolution_clock::now();
-	// Arg a = Command::Compile("set myfunc [ hehe $1 ]; myfunc \"FUCK YEA :D\"; set yeah \"very awesome\"; loop 10 [ hehe $yeah ] ; set hehe \"very $cool (hehe haha) ; awesome :D nice\"; lol $hehe 5 6 (hehe troll (get hehe) $hehe 66 hehe (lolzy (hehe lelele)));set hehe 5");
-	// Arg a = Command::Compile("set a 5; set lolzyfunc [ print $1 $3 $0; loop 1 [ print lol $a ]; set a (inc $a 1); if (lt $a 500) ($) (print njahahaha; $; print \"DONE :D\") ]; lolzyfunc heheh very nice :D; loop 10 [ hehe $yeah ]; set hehe 5");
-	Arg a = Command::Compile("set a 5; set lolzyfunc [ print $1 $3 $0; loop 1 [ print lol $a ]; ]");
+	// Arg a = Command::Compile("set myfunc [ hehe $1 ]; myfunc \"yay\"; set yeah \"very awesome\"; loop 10 [ hehe $yeah ] ; set hehe \"very $cool (hehe haha) ; awesome :D nice\"; lol $hehe 5 6 (hehe troll (get hehe) $hehe 66 hehe (lolzy (hehe lelele)));set hehe 5");
+	// Arg a = Command::Compile("set a 5; set somefunc [ print $1 $3 $0; loop 1 [ print lol $a ]; set a (inc $a 1); if (lt $a 500) ($) (print test; $; print \"DONE :D\") ]; somefunc heheh very nice :D; loop 10 [ hehe $yeah ]; set hehe 5");
+	Arg a = Command::Compile("set a 5; set somefunc [ print $1 $3 $0; loop 1 [ print lol $a; set a 7 ]; ]");
 	// for(int i=0; i < 11695; i++)
 		// test();
 		Command::Execute(a,args);
@@ -140,9 +142,16 @@ int main() {
 	
 	cout << "variable: " << Command::Get("hehe") << endl;
 	// return 0;
+	// ------------
 	
 	try {
-		Command::Execute("vec3p (vec3 1.32 3 5.7)");
+		Command::Execute("somefunc 1 2 3 4");
+	} catch(...) {
+		cout << "vec3 exception\n";
+	}
+	
+	try {
+		Command::Execute("t=(vec3 1.32 3 5.7);vec3p $t;t=54; vec3p $t");
 	} catch(...) {
 		cout << "vec3 exception\n";
 	}

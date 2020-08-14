@@ -1,7 +1,19 @@
+/*
+	Simple Key binder for SDL2 which executes command bound to key
+	
+	=============
+	COMMAND(void, say, [](std::string msg) {
+		std::cout << msg << "\n";
+	});
+	
+	Bind bind;
+	bind.SetKey("F1", "say \"hey, im spamming this by F1\"");
+	=============
+*/
 #ifndef BIND_HPP
 #define BIND_HPP
 
-#include "commands.hpp"
+#include "Commands.hpp"
 #include <unordered_map>
 #include <SDL2/SDL.h>
 

@@ -1,4 +1,4 @@
-#include "commands.hpp"
+#include "Commands.hpp"
 #include <cstring>
 #include <iostream>
 using std::cout;
@@ -358,6 +358,15 @@ Command::Command() : m_root_functions(new node()), m_root_variables(new node()) 
 		return a;
 	});
 #endif
+
+	add_command("set", [this](std::string varname, Arg a) -> Arg {
+		set(varname, a);
+		auto it = m_on_set.find(varname);
+		if(it != m_on_set.end()) {
+			it->second(a);
+		}
+		return a;
+	});
 }
 // ---------------------------------------------------------------------------------
 // ------------------------------------[ DEBUG ]------------------------------------
@@ -553,7 +562,8 @@ void Command::decompile_code(std::stringstream& s, std::vector<Arg>& e, int ofs,
 
 
 char ident_to_index(char c) {
-	if(c == '/' || c == ' ' || c == '$')
+	// if(/*c == '/' || */c == ' ' || c == '$')
+	if(c == '[' || c == '(' || c == ';' || c == ' ' || c == '$')
 		return -1;
 	return c;
 	/*
@@ -585,6 +595,7 @@ char index_to_ident(char c) {
 }
 
 void Command::add_to_tree(node* n, std::string s) {
+	if(s.empty()) return;
 	for(auto& cc : s) {
 		
 		char c = ident_to_index(cc);
@@ -612,56 +623,81 @@ void Command::fill(node* n, std::vector<std::string>& vec, std::string s, int li
 }
 
 std::vector<std::string> Command::search(const std::string& cmd, int cursor, int limit) {
-	node* n = sweep_node(cmd, cursor);
 	std::vector<std::string> vec;
-	fill(n, vec, "", limit);
+	cursor = std::min<int>( std::max<int>(0, cmd.size()-1), std::max(0,cursor) );
+	std::string cmd1 = cmd;
+	node* n = sweep_node(cmd1, cursor);
+	fill(n, vec, cmd1, limit);
 	return vec;
 }
 
-node* Command::sweep_node(const std::string& cmd, int cursor) {
+node* Command::sweep_node(std::string& cmd, int cursor) {
 	int i;
-	node* n = nullptr;
+	node* n = m_root_functions;
+	
+	// go from cursor to something that is not identifier
 	for(i=cursor; i > 0; i--) {
-		if(cmd[i] == '[' || cmd[i] == '(' || cmd[i] == ';' || cmd[i] == ' ' || cmd[i] == '/') break;
 		if(cmd[i] == '$') {
 			n = m_root_variables;
 			break;
+		} else if(ident_to_index(cmd[i]) == -1)  {
+			break;
 		}
 	}
-	if(!n) n = m_root_functions;
 	
 	if(i < 0) i = 0;
-	int start=i+1, stop=cmd.size();
+	
+	// check if we have identifier before this identifier
+	if(!cmd.empty() && cmd[i] == ' ') {
+		for(int j = i; j > 0; j--) {
+			if(ident_to_index(cmd[j]) != -1) return nullptr;
+		}
+	}
+	
+	int start=i+(cmd.empty() ? 0 : 1), stop=cmd.size();
+	// std::cout << "sweep: " << cmd << " : " << start << " : " << stop << "\n";
+	
+	// find start of identifier
 	for(; i < cmd.size(); i++) {
 		if(ident_to_index(cmd[i]) != -1) {
 			start = i;
 			break;
 		}
 	}
+	
+	// find end of identifier
 	for(; i < cmd.size(); i++) {
 		if(ident_to_index(cmd[i]) == -1) {
 			stop = i;
 			break;
 		}
 	}
-	if(start == -1 || stop == -1) return nullptr;
-	std::string ident = cmd.substr(start, stop-start);
+	// std::cout << "sweep2: " << cmd << " : " << start << " : " << stop << "\n";
 	
+	if(start > stop || start == -1 || stop == -1) return nullptr;
+	std::string ident = cmd.substr(start, stop-start);
+	cmd = ident;
+	if(n == m_root_variables) {
+		cmd = "$" + ident;
+	}
+	if(cursor != 0 && cmd.empty()) return nullptr;
+	// std::cout << "sweep3: " << cmd << "\n";
 	
 	for(i=0; i < ident.size(); i++) {
 		char c = ident_to_index(ident[i]);
-		if(c == -1) return nullptr;
+		// if(c == -1) return nullptr;
+		if(c == -1) return n;
 		
 		if(n) {
 			n = n->nodes[c];
-		} else
-			return nullptr;
+		}
 	}
 	return n;
 }
 
 std::string Command::complete(const std::string& cmd, int cursor) {
-	node* n = sweep_node(cmd, cursor);
+	std::string cmd1 = cmd;
+	node* n = sweep_node(cmd1, cursor);
 	std::string additional = "";
 	while(n) {
 		if(n->cmd != -1) return additional;
@@ -919,7 +955,10 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 			}
 			
 			if(state == ident) {
+				
+				// TODO: ident becomes string here ???
 				std::string ident(start, (int)(s-start));
+				
 				debug(cout << "-- ident: " << ident << endl;);
 				Arg a;
 				argument++;
@@ -1001,10 +1040,20 @@ const char* Command::parseCode(std::vector<Arg>& code, const char* s, std::strin
 					
 					last_func = code.size();
 					argument = 0;
+					
+					/*
+					swithc(ident) {
+						case GET_VARIABLE_FUNCTION:
+						case SET_VARIABLE_FUNCTION:
+					}
+					*/
+					
 					if(ident == GET_VARIABLE_FUNCTION) {
 						code.emplace_back(0, Arg::t_get);
+					/*
 					} else if(ident == SET_VARIABLE_FUNCTION) { // known to have 2 params
 						code.emplace_back(0, Arg::t_set);
+					*/
 					} else if(ident == IF_FUNCTION) {
 						code.emplace_back(0, Arg::t_if);
 					} else if(ident == GOTO_FUNCTION) {
@@ -1141,10 +1190,12 @@ void Command::saveVariablesToFile(std::string filename, bool overwrite) {
 	
 	std::ofstream file(filename, overwrite ? (std::ofstream::out | std::ofstream::trunc) : std::ofstream::app);
     for(auto& variable : m_strings) {
+		
 		auto it = m_variables.find(variable.second);
 		if(it == m_variables.end()) continue;
 		Arg v = m_variables[variable.second];
 		std::string var = std::string(SET_VARIABLE_FUNCTION " ") + variable.first + " ";
+		
 		switch(v.type) {
 			case Arg::t_executable: {
 				std::string exec_text = get_executable_text(v);
@@ -1226,12 +1277,23 @@ bool Command::exist(const std::string& variable) {
 	return it != m_strings.end() && m_variables.find(it->second) != m_variables.end();
 }
 
-void Command::set(std::string variable, const Arg& value) {
+static void setval(Arg& place, Arg& value) {
+	if(place.type == Arg::t_object) {
+		place.o.dec_ref();
+	}
+	if(value.type == Arg::t_object) {
+		value.o.inc_ref();
+	}
+	place = value;
+}
+
+void Command::set(std::string variable, Arg& value) {
 	auto it = m_strings.find(variable);
 	if(it != m_strings.end()) {
-		m_variables[it->second] = value;
+		setval(m_variables[it->second], value);
+		
 	} else {
-		m_variables[alloc_variable(variable)] = value;
+		setval(m_variables[alloc_variable(variable)], value);
 	}
 }
 
@@ -1421,6 +1483,11 @@ go_back:
 				len = a.i-1;
 				
 				debug(cout << "executing function " << len << "\n");
+				for(Arg& a : tmp) {
+					if(a.type == Arg::t_object) {
+						a.o.check_ref();
+					}
+				}
 				tmp.clear();
 				i++;
 				Arg& b = e.code[i];
@@ -1582,23 +1649,25 @@ go_back:
 						if(global_context) {
 							auto it = m_variables.find(s.i);
 							if(it != m_variables.end()) {
-								it->second = v;
+								setval(it->second,v);
 							}
 						} else {
+							// check first local variable
 							auto it = e.vars.find(s.i);
 							if(it != e.vars.end()) {
 								debug(cout << "setting local variable\n");
-								it->second = v;
+								setval(it->second, v);
 							} else {
+								// then check global variable (if exists)
 								auto it = m_variables.find(s.i);
 								if(it != m_variables.end()) {
 									debug(cout << "setting global variable " << s.i << " " << endl);
 									// debug(v.dump(););
 									// debug(cout << endl;)
-									it->second = v;
+									setval(it->second,v);
 								} else {
 									add_to_tree(m_root_variables, m_strings_reverse[s.i]);
-									m_variables[s.i] = v;
+									setval(m_variables[s.i],v);
 								}
 							}
 						}
@@ -1695,13 +1764,22 @@ go_back:
 				// execute command
 				auto it = m_commands.find(func.i);
 				
+				// search among commands
 				if(it != m_commands.end()) {
 					debug(cout << "calling function: " << m_strings_reverse[func.i] << endl);
 					try {
+						
 						ret = it->second(tmp);
+						for(Arg& a : tmp) {
+							if(a.type == Arg::t_object) {
+								a.o.check_ref();
+							}
+						}
 						debug(printCompiledCode(tmp);)
 					} catch(...) {}
 				} else {
+					
+					// search among variables
 					auto it = m_variables.find(func.i);
 					if(it != m_variables.end()) {
 						// Arg execute(const Arg& a, const std::vector<Arg>& args, bool global_context);
