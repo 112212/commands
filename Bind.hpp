@@ -29,7 +29,7 @@ class Bind {
 		bool SetKey(std::string key, int value);
 		
 		void UnsetKey(std::string key);
-		Commands::Arg OnEvent(SDL_Event& e);
+		bool OnEvent(SDL_Event& e);
 };
 
 

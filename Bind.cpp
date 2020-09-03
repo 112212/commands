@@ -41,9 +41,16 @@ static std::unordered_map<std::string, int> str_to_key = {
 	{"x", SDLK_x},
 	{"y", SDLK_y},
 	{"z", SDLK_z},
+	{"/", SDLK_SLASH},
+	{"esc", SDLK_ESCAPE},
 	{"enter", SDLK_RETURN},
 	{"lshift", SDLK_LSHIFT},
-	{"mwheel", MWHEEL}
+	{"mwheel", MWHEEL},
+	{"mouse1", SDL_BUTTON_LEFT},
+	{"mouse2", SDL_BUTTON_RIGHT},
+	{"mouse3", SDL_BUTTON_MIDDLE},
+	{"mouse4", SDL_BUTTON_X1},
+	{"mouse5", SDL_BUTTON_X2},
 	
 };
 
@@ -104,27 +111,50 @@ bool Bind::SetKey(std::string key, int value) {
 }
 
 
-Commands::Arg Bind::OnEvent(SDL_Event& e) {
+bool Bind::OnEvent(SDL_Event& e) {
 	
-	if(e.type == SDL_KEYDOWN) {
-		auto it = m_key_executable.find((int)e.key.keysym.sym);
-		if(it != m_key_executable.end() && it->second.type == Arg::t_executable) {
-			Arg &code = it->second;
-			std::vector<Arg> args;
-			Command::Execute(code, args, true);
-			return code;
-		}
-	} else if(e.type == SDL_MOUSEWHEEL) {
-		auto it = m_key_executable.find(MWHEEL);
-		if(it != m_key_executable.end() && it->second.type == Arg::t_executable) {
-			Arg &code = it->second;
-			std::vector<Arg> args;
-			args.emplace_back(int(e.wheel.y));
-			Command::Execute(code, args, true);
-			return code;
-		}
+	switch(e.type) {
+		
+		case SDL_KEYDOWN:
+		case SDL_KEYUP:
+			{
+				auto it = m_key_executable.find((int)e.key.keysym.sym);
+				if(it != m_key_executable.end() && it->second.type == Arg::t_executable) {
+					Arg &code = it->second;
+					std::vector<Arg> args {(int)(e.type == SDL_KEYDOWN)};
+					Command::Execute(code, args, true);
+					return true;
+				}
+				break;
+			}
+		case SDL_MOUSEWHEEL:
+			{
+				auto it = m_key_executable.find(MWHEEL);
+				if(it != m_key_executable.end() && it->second.type == Arg::t_executable) {
+					Arg &code = it->second;
+					std::vector<Arg> args { int(e.wheel.y) };
+					Command::Execute(code, args, true);
+					return true;
+				}
+				break;
+			}
+		
+		case SDL_MOUSEBUTTONDOWN:
+		case SDL_MOUSEBUTTONUP:
+			{
+				auto it = m_key_executable.find(e.button.button);
+				if(it != m_key_executable.end() && it->second.type == Arg::t_executable) {
+					Arg &code = it->second;
+					std::vector<Arg> args { (int)(e.type == SDL_MOUSEBUTTONDOWN) };
+					Command::Execute(code, args, true);
+					return true;
+				}
+				break;
+			}
+			
 	}
-	return Commands::Arg(0);
+	
+	return false;
 }
 
 void Bind::SaveKeys(std::string filename) {

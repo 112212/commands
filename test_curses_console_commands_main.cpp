@@ -44,7 +44,7 @@ int main() {
 			for(auto& s : vec) {
 				info += s + " | ";
 			}
-			console.SetTmpInfoString(console.GetInfoString() + "\n------\n" + info);
+			console.SetTmpInfoString("\n------\n" + info);
 		}
 		return Command::Complete(cmd, cursor);
 	});

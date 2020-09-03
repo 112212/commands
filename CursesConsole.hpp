@@ -58,7 +58,7 @@ class CursesConsole {
 	private:
 		std::string (*code_complete_handler)(std::string cmd, int cursor);
 		int get_log_height();
-		int get_info_height();
+		int get_info_height(std::string* s=0);
 		friend struct ncurses_stream;
 		WINDOW* m_window;
 		ncurses_stream* m_stream;

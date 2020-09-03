@@ -115,9 +115,11 @@ double Arg::to_double() {
 			return 0.0;
 	}
 }
+
 std::string Arg::to_string() {
 	return *this;
 }
+
 Arg::~Arg() {
 	if(type == Arg::t_string) {
 		using std::string;
@@ -182,32 +184,47 @@ Arg& Arg::operator=(const Arg& a) {
 	return *this;
 }
 
+Arg& Arg::operator=(const std::string& a) {
+	type = t_string;
+	s = a;
+	return *this;
+}
+
 Arg::operator int() {
-	if(type == t_int)
-		return i;
-	else if(type == t_string) {
-		try {
-			return std::stoi(s);
-		} catch(...) {
+	switch(type) {
+		case t_int:
+			return i;
+		case t_string:
+			try {
+				return std::stoi(s);
+			} catch(std::exception ex) {
+				return 0;
+			}
+		case t_float:
+			return (int)f;
+		case t_double:
+			return (int)d;
+		case t_object:
+			return (int)1;
+		default:
 			return 0;
-		}
-	} else if(type == t_float) {
-		return (int)f;
-	} else if(type == t_double) {
-		return (int)d;
-	} else return 0;
+	}
+	return 0;
 }
 
 Arg::operator std::string() {
-	if(type == t_string) {
-		return s;
-	} else if(type == t_int) {
-		return std::to_string(i);
-	} else if(type == t_float) {
-		return std::to_string(f);
-	} else if(type == t_double) {
-		return std::to_string(d);
-	} else return "";
+	switch(type) {
+		case t_string:
+			return s;
+		case t_int:
+			return std::to_string(i);
+		case t_float:
+			return std::to_string(f);
+		case t_double:
+			return std::to_string(d);
+		default:
+			return "";
+	}
 }
 
 // -----------------------------------------------------------
@@ -1219,6 +1236,10 @@ void Command::saveVariablesToFile(std::string filename, bool overwrite) {
 			case Arg::t_double:
 				var += std::to_string(v.d);
 				break;
+			case Arg::t_object:
+				if(v.o->type->serializer) {
+					var += v.o->type->serializer(v.o->ptr);
+				}
 			default:
 				break;
 		}
@@ -1279,10 +1300,10 @@ bool Command::exist(const std::string& variable) {
 
 static void setval(Arg& place, Arg& value) {
 	if(place.type == Arg::t_object) {
-		place.o.dec_ref();
+		place.o->dec_ref();
 	}
 	if(value.type == Arg::t_object) {
-		value.o.inc_ref();
+		value.o->inc_ref();
 	}
 	place = value;
 }
@@ -1483,12 +1504,17 @@ go_back:
 				len = a.i-1;
 				
 				debug(cout << "executing function " << len << "\n");
+				
+				// clear previous params
+				/*
 				for(Arg& a : tmp) {
 					if(a.type == Arg::t_object) {
 						a.o.check_ref();
 					}
 				}
 				tmp.clear();
+				*/
+				
 				i++;
 				Arg& b = e.code[i];
 				switch(b.type) {
@@ -1768,13 +1794,7 @@ go_back:
 				if(it != m_commands.end()) {
 					debug(cout << "calling function: " << m_strings_reverse[func.i] << endl);
 					try {
-						
 						ret = it->second(tmp);
-						for(Arg& a : tmp) {
-							if(a.type == Arg::t_object) {
-								a.o.check_ref();
-							}
-						}
 						debug(printCompiledCode(tmp);)
 					} catch(...) {}
 				} else {
@@ -1789,6 +1809,7 @@ go_back:
 						return Arg();
 					}
 				}
+				
 			} else if(func.type == Arg::t_executable) {
 				auto it = m_executables.find(func.i);
 				if(it != m_executables.end()) {
@@ -1802,6 +1823,14 @@ go_back:
 				)
 				ret = func;
 			}
+			
+			for(Arg& a : tmp) {
+				if(a.type == Arg::t_object) {
+					a.o->check_ref();
+				}
+			}
+			tmp.clear();
+			
 			len = 999;
 			c = 0;
 		}

@@ -86,6 +86,7 @@ void CursesConsole::SetCommandPrefix(std::string prefix) {
 
 void CursesConsole::ClearLog() {
 	m_lines.clear();
+	m_cursor = 0;
 	dirty = true;
 	if(m_auto_refresh) {
 		Refresh();
@@ -113,21 +114,23 @@ std::string CursesConsole::GetInfoString() {
 }
 
 int CursesConsole::get_log_height() {
-	return m_window_height-1-m_command.size()/m_window_width-1 - get_info_height();
+	std::string info_strings = m_info_string+m_tmp_info_string;
+	return m_window_height-1-m_command.size()/m_window_width-1 - get_info_height(&info_strings);
 }
 
-int CursesConsole::get_info_height() {
+int CursesConsole::get_info_height(std::string* info_string) {
+	if(!info_string) info_string = &m_info_string;
+	if(info_string->empty()) return 0;
 	std::string::size_type prev=0;
-	std::string info_string = !m_tmp_info_string.empty() ? m_tmp_info_string : m_info_string;
-	int lines = 0;
-	for(auto it = info_string.find_first_of('\n'); ; 
-		prev=it, it = info_string.find_first_of('\n', it+1)) {
-		lines += (std::min(info_string.size(), it) - prev + 1) / m_window_width + 1;
+	int lines = 1;
+	for(auto it = info_string->find_first_of('\n'); ; 
+		prev=it, it = info_string->find_first_of('\n', it+1)) {
+		lines += (std::min(info_string->size(), it) - prev + 1) / m_window_width + 1;
 		if(it == std::string::npos) {
 			break;
 		}
 	}
-	return (!info_string.empty() ? 1 : 0) + lines;
+	return lines;
 }
 
 void CursesConsole::Refresh() {
@@ -142,11 +145,15 @@ void CursesConsole::Refresh() {
 			wprintw(m_window, it->c_str());
 		}
 		
-		int info_height = get_info_height();
+		std::string info_strings = m_info_string+m_tmp_info_string;
+		int info_height = get_info_height(&info_strings);
+		// int tmp_info_height = get_info_height(&m_tmp_info_string);
+		
 		if(info_height > 0) {
-			std::string info_string = !m_tmp_info_string.empty() ? m_tmp_info_string : m_info_string;
+			std::string info_string = !m_tmp_info_string.empty() ? (m_info_string + m_tmp_info_string) : m_info_string;
 			mvwhline(m_window, log_height, 0, ACS_HLINE, m_window_width);
 			mvwprintw(m_window, log_height+1, 0, info_string.c_str());
+			// mvwhline(m_window, log_height+info_height, 0, ACS_HLINE, m_window_width);
 		}
 		
 		mvwhline(m_window, log_height+info_height, 0, ACS_HLINE, m_window_width);
@@ -291,11 +298,13 @@ std::string CursesConsole::Input() {
 				} else {
 					m_command.insert(m_command_cursor++, 1, input);
 				}
+				
+				if(m_auto_code_complete) {
+					std::string cmd = GetCommand();
+					code_complete_handler(cmd, cmd.size());
+				}
 		}
-		if(m_auto_code_complete) {
-			std::string cmd = GetCommand();
-			code_complete_handler(cmd, cmd.size());
-		}
+		
 		dirty = true;
 	}
 }

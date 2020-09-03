@@ -76,6 +76,7 @@ struct ObjectInfo {
 	
 	// std::function<void*(std::vector<Arg>)> constructor;
 	std::function<void(void* ptr)> destructor;
+	std::function<std::string(void* ptr)> serializer;
 	std::map<std::string, std::function<Arg(void*, std::vector<Arg>)>> methods;
 };
 
@@ -93,6 +94,7 @@ struct Object {
 	void dec_ref() {
 		ref_cnt --;
 		if(ref_cnt == 0) {
+			std::cout << "dec_ref: dealloc" << "\n";
 			type->destructor(ptr);
 		}
 	}
@@ -111,7 +113,7 @@ struct Arg {
 		type;
 	
 	union {
-		Object o;
+		Object *o;
 		int i;
 		float f;
 		double d;
@@ -120,7 +122,7 @@ struct Arg {
 	
 	Arg(type_enum type = t_void)  { this->type = type; }
 	
-	Arg(Object o, type_enum type = t_object) {
+	Arg(Object *o, type_enum type = t_object) {
 		this->type = type;
 		this->o = o;
 	}
@@ -146,6 +148,10 @@ struct Arg {
 	}
 	
 	Arg& operator=(const Arg& a);
+	Arg& operator=(const std::string& a);
+	
+	Arg(const char* a) : s(a), type(t_string) {
+	}
 	
 	Arg(const Arg& a) : s() {
 		*this = a;
@@ -159,8 +165,8 @@ struct Arg {
 	template<typename T=Arg>
 	T* to_object(T *t=0) {
 		if(type == t_object) {
-			if(o.type->type == typeid(T)) {
-				return static_cast<T*>(o.ptr);
+			if(o->type->type == typeid(T)) {
+				return static_cast<T*>(o->ptr);
 			} else {
 				return 0;
 			}
@@ -218,7 +224,7 @@ class Command {
 		template<bool isvoid, bool done, int n, int N>
 		struct adapter_function_generator {
 		
-			static void handle_element(Object& o, std::vector<Arg>& args) {
+			static void handle_element(Object*& o, std::vector<Arg>& args) {
 				o = args[n].o;
 			}
 			static void handle_element(int& i, std::vector<Arg>& args) {
@@ -268,7 +274,7 @@ class Command {
 			}
 		};
 		
-		static void handle_result(Arg& arg, Object r) {
+		static void handle_result(Arg& arg, Object* r) {
 			arg.type = Arg::t_object;
 			arg.o = r;
 		}
@@ -437,8 +443,9 @@ class Command {
 		//
 		
 		// --- getting/setting variables
-		static Arg Get(const std::string& variable) {
-			return GetSingleton().get(variable);
+		static Arg Get(const std::string& variable, Arg def=0) {
+			Arg a = GetSingleton().get(variable);
+			return (a.type != Arg::t_void) ? a : def;
 		}
 		
 		static std::string GetString(const std::string& variable) {
