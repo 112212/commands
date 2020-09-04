@@ -19,14 +19,17 @@
 
 class Bind {
 	private:
-		std::unordered_map<int, Commands::Arg> m_key_executable;
+		std::unordered_map<int, std::pair<Commands::Arg,Commands::Arg>> m_key_executable;
 	public:
 		Bind();
 		~Bind();
 		void SaveKeys(std::string filename);
 		
-		bool SetKey(std::string key, std::string command);
-		bool SetKey(std::string key, int value);
+		bool GetKeyState(std::string key);
+		bool GetKeyState(int key);
+		
+		bool SetKey(std::string key, Commands::Arg command);
+		// bool SetKey(std::string key, int value);
 		
 		void UnsetKey(std::string key);
 		bool OnEvent(SDL_Event& e);
